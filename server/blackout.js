@@ -1,4 +1,7 @@
-var BLACKOUT_TICK_MS = 10 * 1000;
+var util = require('./util.js');
+
+var BLACKOUT_TICK_MS = 3 * 1000;
+
 var blackout = {
     'clients_': []
 };
@@ -38,37 +41,61 @@ blackout.tick = function()
     }
 };
 
-blackout.process = function(req, res, postData)
+
+blackout.main = function(context)
 {
-    var regex = /\/events\/(\S+)$/;
-    var result = req.url.match(regex);
+    context.res.writeHead(200, {'Content-Type': 'text/plain'});
+    context.res.end('Main: '+context.user.name+'!\n');
+    return true;
+}
 
-    if(result)
+blackout.eventsource = function(context)
+{
+    context.res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+            });
+
+    context.res.write(':' + Array(2049).join(' ') + '\n'); //2kb padding for IE
+
+    blackout.connect(context.id, context.res);
+    context.res.socket.on('close', function () {
+            blackout.disconnect(context.id, context.res);
+            });
+    return true;
+}
+
+blackout.processRequest = function(context)
+{
+    console.log("blackout.processRequest");
+
+    var cmd = context.args.shift();
+
+    if(cmd == 'main')
     {
-        var id = result[1];
-
-        res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*'
-                });
-
-        res.write(':' + Array(2049).join(' ') + '\n'); //2kb padding for IE
-
-        be.connect(id, res);
-        res.socket.on('close', function () {
-                be.disconnect(id, res);
-                });
+        if(blackout.main(context))
+            return;
     }
-    else
+
+    if(cmd == 'eventsource')
     {
-        res.writeHead(200, {'Content-Type': 'text/plain'});
-        res.end('Hello World (postdata:'+postData+')\n');
+        if(blackout.eventsource(context))
+            return;
     }
+
+    context.res.writeHead(200, {'Content-Type': 'text/plain'});
+    context.res.end('Bad blackout request (postdata:'+context.postData+')\n');
+}
+
+blackout.redirect = function(context)
+{
+    util.redirect(context.res, '/'+context.id+'/blackout/main');
 }
 
 setInterval(function() { blackout.tick(); }, BLACKOUT_TICK_MS);
 exports.connect = blackout.connect;
 exports.disconnect = blackout.disconnect;
-exports.process = blackout.process;
+exports.processRequest = blackout.processRequest;
+exports.redirect = blackout.redirect;
