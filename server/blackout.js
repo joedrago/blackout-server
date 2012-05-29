@@ -1,55 +1,126 @@
+// ----------------------------------------------------------------------------
+// Imports
+
 var util = require('./util.js');
+var template = require('./json-template.js');
+var fs = require('fs');
+
+// ----------------------------------------------------------------------------
+// Constants
 
 var BLACKOUT_TICK_MS = 3 * 1000;
 
-var blackout = {
-    'clients_': []
-};
+// ----------------------------------------------------------------------------
+// Global structures holding all data
 
-blackout.connect = function(id, res)
+var sConnections = {};
+var sGames = {};
+
+// ----------------------------------------------------------------------------
+// class Game
+
+function Game(ownerid)
+{
+    do
+    {
+        this.id = util.randomString(8);
+    } while(sGames.hasOwnProperty(this.id));
+
+    this.owner = ownerid;
+    this.users = [ ownerid ];
+
+    sGames[this.id] = this; // register with game list
+}
+
+// ----------------------------------------------------------------------------
+// Connection handlers
+
+function onConnect(id, res)
 {
     console.log("attaching id: " + id);
-    blackout.clients_.push({ 'id':id, 'res':res });
-};
+    sConnections[id] = { 'id':id, 'res':res };
+}
 
-blackout.disconnect = function(id, res)
+function onDisconnect(id, res)
 {
-    for(var i = 0; i < blackout.clients_.length; i++)
-    {
-        if(blackout.clients_[i].id == id)
-        {
-            blackout.clients_.splice(i, 1);
-            break;
-        }
-    }
-};
+    delete sConnections[id];
+}
 
-blackout.tick = function()
+// ----------------------------------------------------------------------------
+// Update Connection
+
+function updateConnection(connection)
 {
-    console.log("tick");
+    var data = {};
 
-    var clientList = "clients: ";
-    for(var i = 0; i < blackout.clients_.length; i++)
-    {
-        clientList += blackout.clients_[i].id + " ";
-    }
+    // TOMORROW
 
-    for(var i = 0; i < blackout.clients_.length; i++)
-    {
-        var client = blackout.clients_[i];
-        client.res.write('data: ' + clientList + '\n\n');
-    }
-};
+    connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
+}
 
+// ----------------------------------------------------------------------------
+// Helpers
 
-blackout.main = function(context)
+function sendSuccess(context)
 {
     context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end('Main: '+context.user.name+'!\n');
+    context.res.end('OK');
     return true;
 }
 
-blackout.eventsource = function(context)
+function interp(name, vars)
+{
+    var text;
+    try
+    {
+        var fileContents = fs.readFileSync('./templates/'+name+'.html', 'utf8');
+        text = template.expand(fileContents, vars);
+    }
+    catch(err)
+    {
+        text = '';
+    }
+    return text;
+}
+
+// ----------------------------------------------------------------------------
+// Timed event to cleanup, do pings, age out games and players, etc
+
+function tick()
+{
+//    console.log("-------------------");
+//    console.log("sConnections:\n"+JSON.stringify(sConnections));
+//    console.log("sGames:\n"+JSON.stringify(sGames));
+
+//    var connectionList = "connections: ";
+//    for(var i = 0; i < sConnections.length; i++)
+//    {
+//        connectionList += sConnections[i].id + " ";
+//    }
+//
+//    for(var i = 0; i < sConnections.length; i++)
+//    {
+//        var connection = sConnections[i];
+//        connection.res.write('data: ' + connectionList + '\n\n');
+//    }
+};
+
+setInterval(function() { tick(); }, BLACKOUT_TICK_MS);
+
+// ----------------------------------------------------------------------------
+// Main: displays main page, tailored for a specific user
+
+function rpcMain(context)
+{
+    context.res.writeHead(200, {'Content-Type': 'text/html'});
+    context.res.end(interp('main', {'name': context.user.name}));
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// Creates persistent connection for pushing data
+
+function rpcEventsource(context)
 {
     context.res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -60,28 +131,44 @@ blackout.eventsource = function(context)
 
     context.res.write(':' + Array(2049).join(' ') + '\n'); //2kb padding for IE
 
-    blackout.connect(context.id, context.res);
+    onConnect(context.id, context.res);
     context.res.socket.on('close', function () {
-            blackout.disconnect(context.id, context.res);
+            onDisconnect(context.id, context.res);
             });
     return true;
 }
 
-blackout.processRequest = function(context)
+// ----------------------------------------------------------------------------
+// NewGame: leaves any old game, puts user in a new game as the owner
+
+function rpcNewGame(context)
 {
-    console.log("blackout.processRequest");
+    var game = new Game(context.id);
+    context.user.gameid = game.id;
+
+    updateConnection(sConnections[context.id]);
+
+    return sendSuccess(context);
+}
+
+// ----------------------------------------------------------------------------
+// HTTP processing
+
+var sDispatch = {
+    'main': rpcMain,
+    'eventsource': rpcEventsource,
+    'newgame': rpcNewGame
+};
+
+processRequest = function(context)
+{
+    console.log("processRequest");
 
     var cmd = context.args.shift();
 
-    if(cmd == 'main')
+    if(sDispatch.hasOwnProperty(cmd))
     {
-        if(blackout.main(context))
-            return;
-    }
-
-    if(cmd == 'eventsource')
-    {
-        if(blackout.eventsource(context))
+        if(sDispatch[cmd](context))
             return;
     }
 
@@ -89,13 +176,15 @@ blackout.processRequest = function(context)
     context.res.end('Bad blackout request (postdata:'+context.postData+')\n');
 }
 
-blackout.redirect = function(context)
+function redirect(context)
 {
     util.redirect(context.res, '/'+context.id+'/blackout/main');
 }
 
-setInterval(function() { blackout.tick(); }, BLACKOUT_TICK_MS);
-exports.connect = blackout.connect;
-exports.disconnect = blackout.disconnect;
-exports.processRequest = blackout.processRequest;
-exports.redirect = blackout.redirect;
+// ----------------------------------------------------------------------------
+// Exports
+
+exports.connect = onConnect;
+exports.disconnect = onDisconnect;
+exports.processRequest = processRequest;
+exports.redirect = redirect;

@@ -4,6 +4,16 @@ var user = {
 var util = require('./util.js');
 var blackout = require('./blackout.js');
 
+user.getInfo = function(id)
+{
+    if(user.users_.hasOwnProperty(id))
+    {
+        return user.users_[id];
+    }
+
+    return undefined;
+}
+
 user.addInfo = function(context)
 {
     if(user.users_.hasOwnProperty(context.id))
@@ -21,7 +31,7 @@ user.newUser = function(context)
 {
     var id;
     {
-        id = 123456;//util.randomString(8);
+        id = util.randomString(8);
     }
     while(user.users_.hasOwnProperty(id));
 
@@ -42,8 +52,8 @@ user.rename = function(context)
         return true;
     }
 
-    context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end('Pick a name, '+context.user.name+'!\n');
+    context.res.writeHead(200, {'Content-Type': 'text/html'});
+    context.res.end('Pick a name: <form method="POST"><input type="text" name="name" value="'+context.user.name+'"></form>\n');
     return true;
 }
 
@@ -70,4 +80,5 @@ user.processRequest = function(context)
 }
 
 exports.addInfo = user.addInfo;
+exports.getInfo = user.getInfo;
 exports.processRequest = user.processRequest;
