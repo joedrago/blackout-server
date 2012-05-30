@@ -1,9 +1,12 @@
 // ----------------------------------------------------------------------------
 // Imports
 
-var util = require('./util.js');
-var template = require('./json-template.js');
 var fs = require('fs');
+var path = require('path');
+var http = require('http');
+var url = require('url');
+var querystring = require('querystring');
+var template = require('./json-template.js');
 
 // ----------------------------------------------------------------------------
 // Constants
@@ -18,13 +21,42 @@ var sPlayers = {};
 var sGames = {};
 
 // ----------------------------------------------------------------------------
+
+function redirect(res, url)
+{
+    res.writeHead(302, {
+        'Location': url
+    });
+    res.end();
+}
+
+var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz";
+
+function randomString(length)
+{
+    // Guts of this function taken from https://github.com/eliaskg/node-randomstring/
+    // Copyright (c) 2012 Elias Klughammer
+
+    length = length ? length : 32;
+
+    var string = "";
+
+    for (var i=0; i<length; i++) {
+        var randomNumber = Math.floor(Math.random() * chars.length);
+        string += chars.substring(randomNumber, randomNumber + 1);
+    }
+
+    return string;
+}
+
+// ----------------------------------------------------------------------------
 // class Game
 
 function Game(ownerid)
 {
     do
     {
-        this.id = util.randomString(8);
+        this.id = randomString(8);
     } while(sGames.hasOwnProperty(this.id));
 
     this.owner = ownerid;
@@ -38,9 +70,9 @@ function Game(ownerid)
 // ----------------------------------------------------------------------------
 // redirect
 
-function redirect(context)
+function redirectClient(context)
 {
-    util.redirect(context.res, '/'+context.id+'/blackout/client');
+    redirect(context.res, '/'+context.id+'/blackout/client');
 }
 
 // ----------------------------------------------------------------------------
@@ -130,7 +162,7 @@ function rpcNewPlayer(context)
 {
     var id;
     {
-        id = util.randomString(8);
+        id = randomString(8);
     }
     while(sPlayers.hasOwnProperty(id));
 
@@ -139,16 +171,17 @@ function rpcNewPlayer(context)
         'name': "Anonymous",
         'game': 0
     };
-    util.redirect(context.res, '/'+id+'/blackout/rename');
+    redirect(context.res, '/'+id+'/blackout/rename');
     return true;
 }
 
 function rpcRename(context)
 {
-    if(typeof context.post['name'] === 'string')
+    console.log("context.post: " + JSON.stringify(context.post));
+    if(typeof context.post.name === 'string')
     {
         context.player.name = context.post['name'];
-        redirect(context);
+        redirectClient(context);
         return true;
     }
 
@@ -453,7 +486,63 @@ function rpcAction(context)
 }
 
 // ----------------------------------------------------------------------------
-// HTTP processing
+// Static serving
+
+var staticFiles = {};
+
+function isStaticFile(filename)
+{
+    return staticFiles.hasOwnProperty(filename);
+}
+
+function sendError(context, text)
+{
+    context.res.writeHead(500, {'Content-Type': 'text/plain'});
+    context.res.end('ERROR: '+text+' (path:"'+context.path+'" postdata:"'+context.rawPostData+'")\n');
+    return false;
+}
+
+function sendStaticFile(context)
+{
+    if(context.id != 'static')
+        return false;
+
+    var filenamePieces = [ context.module ];
+    filenamePieces = filenamePieces.concat(context.args);
+    var filename = filenamePieces.join('/');
+
+    if(!isStaticFile(filename))
+    {
+        // Send a 404
+        console.log('static file not found: '+filename);
+        context.res.writeHead(404, {'Content-Type': 'text/plain'});
+        context.res.end('static file not found');
+        return true;
+    }
+
+    var mimeType = 'text/plain';
+    var results = filename.match(/\.([^\.]+)$/);
+    if(results)
+    {
+        var extension = results[1];
+        if(extension == 'js')
+            mimeType = 'text/javascript';
+        if(extension == 'css')
+            mimeType = 'text/css';
+        else if(extension == 'html')
+            mimeType = 'text/html';
+    }
+
+    console.log('sending static file "'+filename+'" ['+mimeType+']');
+
+    context.res.writeHead(200, {'Content-Type': mimeType});
+    var fileContents = fs.readFileSync('./static/'+filename);
+    context.res.end(fileContents);
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// Dispatch
 
 var sDispatch = {
     'client': rpcClient,
@@ -464,9 +553,38 @@ var sDispatch = {
     'action': rpcAction
 };
 
-processRequest = function(context)
+function processRequest(context)
 {
-    console.log("processRequest");
+    if(context.id == 'favicon.ico')
+    {
+        return sendError(context, 'favicon is dumb');
+    }
+
+    if(sendStaticFile(context))
+        return;
+
+    if(context.id != 'new')
+    {
+        if(!findPlayer(context))
+        {
+            return sendError(context, 'Unknown player: ' + context.id);
+        }
+    }
+
+    context.post = 0;
+    if(context.rawPostData.length > 0)
+    {
+        try
+        {
+            context.post = JSON.parse(context.rawPostData);
+        }
+        catch(err)
+        {
+            context.post = querystring.parse(context.rawPostData);
+        }
+    }
+    if(!context.post)
+        context.post = {};
 
     var cmd = context.args.shift();
 
@@ -480,11 +598,75 @@ processRequest = function(context)
     context.res.end('Bad blackout request (postdata:'+context.postData+')\n');
 }
 
-// ----------------------------------------------------------------------------
-// Exports
+function buildContext(req, res)
+{
+    var parsedUrl = url.parse(req.url);
+    var path = parsedUrl.pathname;
+    var args = path.split('/');
+    args.shift();
 
-exports.connect = onConnect;
-exports.disconnect = onDisconnect;
-exports.processRequest = processRequest;
-exports.redirect = redirect;
-exports.findPlayer = findPlayer;
+    console.log("Request for " + path + " received.");
+    console.log("args: "+JSON.stringify(args));
+
+    var id = args.shift();
+    var module = args.shift();
+
+    var context = {
+        'path': path,
+        'req': req,
+        'res': res,
+        'rawPostData':'',
+        'id': id,
+        'module': module,
+        'args': args
+    };
+
+    if(id === '')
+    {
+        redirect(res, '/new/blackout/newPlayer');
+    }
+    else
+    {
+        req.setEncoding("utf8");
+        req.addListener("data", function(rawPostDataChunk) {
+                context.rawPostData += rawPostDataChunk;
+                });
+        req.addListener("end", function() {
+                processRequest(context);
+                });
+    }
+}
+
+function addStaticDir(subdir)
+{
+    var dir = './static/';
+    if(subdir)
+        dir += subdir;
+    var list = fs.readdirSync(dir);
+    for(var i=0; i<list.length; i++)
+    {
+        var path = dir + list[i];
+        var s = fs.statSync(path);
+        if(!s.isDirectory())
+        {
+            staticFiles[subdir+list[i]]++;
+        }
+    }
+}
+
+addStaticDir('');
+addStaticDir('images/');
+
+var staticFileCount = 0;
+for(var i in staticFiles)
+{
+    if(staticFiles.hasOwnProperty(i))
+    {
+        staticFileCount++;
+    }
+}
+console.log('Serving '+staticFileCount+' static files.');
+
+http.createServer(buildContext).listen(8124);
+
+console.log('Server running at http://127.0.0.1:8124/');
