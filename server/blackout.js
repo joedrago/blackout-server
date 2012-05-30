@@ -59,8 +59,6 @@ function updateConnection(connection)
     var game = '';
     var games = [];
 
-    console.log('sGames.length: ' + sGames.length);
-
     if(info.game == '')
     {
         // List available games
@@ -210,6 +208,43 @@ function updateLobby()
     }
 }
 
+function updateGame()
+{
+    if(context.user.game && sGames.hasOwnProperty(context.user.game))
+    {
+        var game = sGames[context.user.game];
+        for(var i = 0; i < game.users.length; i++)
+        {
+            if(sConnections.hasOwnProperty(game.users[i]))
+            {
+                updateConnection(sConnections[game.users[i]]);
+            }
+        }
+    }
+
+    for(var id in sConnections)
+    {
+        if(sConnections.hasOwnProperty(id))
+        {
+            var connection = sConnections[id];
+            var userInfo = user.getInfo(id);
+            var updateNeeded = true;
+            if(userInfo.game)
+            {
+                var game = sGames[userInfo.game];
+                if(game && game.started)
+                {
+                    updateNeeded = false;
+                }
+            }
+            if(updateNeeded)
+            {
+                updateConnection(connection);
+            }
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Creates persistent connection for pushing data
 
@@ -232,7 +267,7 @@ function rpcEventsource(context)
 }
 
 // ----------------------------------------------------------------------------
-// newGame: leaves any old game, puts user in a new game as the owner
+// Game create/join
 
 function endGame(context)
 {
@@ -244,7 +279,8 @@ function endGame(context)
         }
         else
         {
-            var game = sGames[context.user.game];
+            var gameid = context.user.game;
+            var game = sGames[gameid];
             for(var i = 0; i < game.users.length; i++)
             {
                 var userInfo = user.getInfo(game.users[i]);
@@ -259,16 +295,13 @@ function endGame(context)
                     updateConnection(connection);
                 }
             }
-            delete sGames[context.user.game];
+            delete sGames[gameid];
         }
         context.user.game = '';
     }
 
     updateLobby();
 }
-
-// ----------------------------------------------------------------------------
-// newGame: leaves any old game, puts user in a new game as the owner
 
 function newGame(context)
 {
@@ -280,8 +313,22 @@ function newGame(context)
     updateLobby();
 }
 
+function joinGame(context)
+{
+    endGame(context);
+
+    var gameid = context.post.game;
+
+    if(gameid && sGames.hasOwnProperty(gameid))
+    {
+        sGames[gameid].users.push(context.id);
+        context.user.game = gameid;
+    }
+    updateLobby();
+}
+
 // ----------------------------------------------------------------------------
-// NewGame: leaves any old game, puts user in a new game as the owner
+// Action dispatch
 
 function rpcAction(context)
 {
@@ -294,10 +341,13 @@ function rpcAction(context)
     {
         newGame(context);
     }
-
-    if(context.post.action == 'endGame')
+    else if(context.post.action == 'endGame')
     {
         endGame(context);
+    }
+    else if(context.post.action == 'joinGame')
+    {
+        joinGame(context);
     }
 
     updateConnection(sConnections[context.id]);

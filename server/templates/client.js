@@ -164,7 +164,10 @@ function render()
                 var info = server.users[server.game.users[i]];
                 addText(entries, '* User: ' + info.name);
             }
-            addAction(entries, 'startGame', 'Start Game');
+            if(server.game.owner == context.id)
+            {
+                addAction(entries, 'startGame', 'Start Game');
+            }
             addAction(entries, 'endGame', 'End Game');
         }
         else
@@ -177,7 +180,7 @@ function render()
         {
             var game = server.games[i];
             var ownerInfo = server.users[game.owner];
-            addAction(entries, 'joinGame', 'Join Game ('+ownerInfo.name+')');
+            addAction(entries, 'joinGame', 'Join Game ('+ownerInfo.name+')', 'game', game.id);
         }
     }
 
