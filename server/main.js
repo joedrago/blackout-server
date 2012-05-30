@@ -4,7 +4,6 @@ var path = require('path');
 var fs = require('fs');
 var querystring = require('querystring');
 var blackout = require('./blackout.js');
-var user = require('./user.js');
 var util = require('./util.js');
 
 var staticFiles = {};
@@ -72,9 +71,9 @@ function processRequest(context)
 
     if(context.id != 'new')
     {
-        if(!user.addInfo(context))
+        if(!blackout.findPlayer(context))
         {
-            return sendError(context, 'Unknown user: ' + context.id);
+            return sendError(context, 'Unknown player: ' + context.id);
         }
     }
 
@@ -94,11 +93,7 @@ function processRequest(context)
         context.post = {};
     }
 
-    if(context.module == 'user')
-    {
-        return user.processRequest(context);
-    }
-    else if(context.module == 'blackout')
+    if(context.module == 'blackout')
     {
         return blackout.processRequest(context);
     }
@@ -113,8 +108,8 @@ function getPostData(req, res)
     var args = path.split('/');
     args.shift();
 
-    //console.log("Request for " + path + " received.");
-    //console.log("args: "+JSON.stringify(args));
+    console.log("Request for " + path + " received.");
+    console.log("args: "+JSON.stringify(args));
 
     var id = args.shift();
     var module = args.shift();
@@ -131,7 +126,7 @@ function getPostData(req, res)
 
     if(id === '')
     {
-        util.redirect(res, '/new/user');
+        util.redirect(res, '/new/blackout/newPlayer');
     }
     else
     {

@@ -161,7 +161,7 @@ function render()
             addText(entries, 'Lobby (Creating Game):');
             for(var i = 0; i < server.game.users.length; i++)
             {
-                var info = server.users[server.game.users[i]];
+                var info = server.users[server.game.users[i].id];
                 addText(entries, '* User: ' + info.name);
             }
             if(server.game.owner == context.id)

@@ -2,7 +2,6 @@
 // Imports
 
 var util = require('./util.js');
-var user = require('./user.js');
 var template = require('./json-template.js');
 var fs = require('fs');
 
@@ -15,6 +14,7 @@ var BLACKOUT_TICK_MS = 3 * 1000;
 // Global structures holding all data
 
 var sConnections = {};
+var sPlayers = {};
 var sGames = {};
 
 // ----------------------------------------------------------------------------
@@ -28,7 +28,7 @@ function Game(ownerid)
     } while(sGames.hasOwnProperty(this.id));
 
     this.owner = ownerid;
-    this.users = [ ownerid ];
+    this.players = [ sPlayers[ownerid] ];
     this.started = false;
     this.ended = false;
 
@@ -36,30 +36,72 @@ function Game(ownerid)
 }
 
 // ----------------------------------------------------------------------------
-// Update Connection
+// redirect
 
-function addUsersFromGame(users, game)
+function redirect(context)
 {
-    for(var i = 0; i < game.users.length; i++)
-    {
-        var id = game.users[i];
-        var userInfo = user.getInfo(id);
-        if(userInfo)
-        {
-            users[id] = userInfo;
-        }
-    }
-    return users;
+    util.redirect(context.res, '/'+context.id+'/blackout/client');
 }
+
+// ----------------------------------------------------------------------------
+// player
+
+function findPlayer(context)
+{
+    if(sPlayers.hasOwnProperty(context.id))
+    {
+        context.player = sPlayers[context.id];
+        return true;
+    }
+
+    return false;
+}
+
+function rpcNewPlayer(context)
+{
+    var id;
+    {
+        id = util.randomString(8);
+    }
+    while(sPlayers.hasOwnProperty(id));
+
+    sPlayers[id] = {
+        'id': id,
+        'name': "Anonymous",
+        'game': 0
+    };
+    util.redirect(context.res, '/'+id+'/blackout/rename');
+    return true;
+}
+
+function rpcRename(context)
+{
+    if(typeof context.post['name'] === 'string')
+    {
+        context.player.name = context.post['name'];
+        redirect(context);
+        return true;
+    }
+
+    context.res.writeHead(200, {'Content-Type': 'text/html'});
+    context.res.end('Pick a name: <form method="POST"><input type="text" name="name" value="'+context.player.name+'"></form>\n');
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// Update Connection
 
 function updateConnection(connection)
 {
-    var info = user.getInfo(connection.id);
-    var users = {};
-    var game = '';
+    var player = sPlayers[connection.id];
+    var game = 0;
     var games = [];
 
-    if(info.game == '')
+    if(player.game)
+    {
+        game = player.game;
+    }
+    else
     {
         // List available games
 
@@ -70,21 +112,14 @@ function updateConnection(connection)
                 if(!sGames[id].started)
                 {
                     games.push(sGames[id]);
-                    users = addUsersFromGame(users, sGames[id]);
                 }
             }
         }
-    }
-    else
-    {
-        game = sGames[info.game];
-        users = addUsersFromGame(users, game);
     }
 
     var data = {
         'type': 'update',
         'game': game,
-        'users': users,
         'games': games
     };
     connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
@@ -109,7 +144,7 @@ function sendError(context)
 
 function interp(context, name)
 {
-    var vars = { 'BLACKOUT_NAME': context.user.name, 'BLACKOUT_ID': context.id };
+    var vars = { 'BLACKOUT_NAME': context.player.name, 'BLACKOUT_ID': context.id };
     var text;
     try
     {
@@ -190,15 +225,11 @@ function updateLobby()
         if(sConnections.hasOwnProperty(id))
         {
             var connection = sConnections[id];
-            var userInfo = user.getInfo(id);
+            var player = sPlayers[connection.id];
             var updateNeeded = true;
-            if(userInfo.game)
+            if(player.game && player.game.started)
             {
-                var game = sGames[userInfo.game];
-                if(game && game.started)
-                {
-                    updateNeeded = false;
-                }
+                updateNeeded = false;
             }
             if(updateNeeded)
             {
@@ -210,14 +241,14 @@ function updateLobby()
 
 function updateGame()
 {
-    if(context.user.game && sGames.hasOwnProperty(context.user.game))
+    if(context.player.game)
     {
-        var game = sGames[context.user.game];
-        for(var i = 0; i < game.users.length; i++)
+        var game = context.player.game;
+        for(var i = 0; i < game.players.length; i++)
         {
-            if(sConnections.hasOwnProperty(game.users[i]))
+            if(sConnections.hasOwnProperty(game.players[i].id))
             {
-                updateConnection(sConnections[game.users[i]]);
+                updateConnection(sConnections[game.players[i].id]);
             }
         }
     }
@@ -227,15 +258,11 @@ function updateGame()
         if(sConnections.hasOwnProperty(id))
         {
             var connection = sConnections[id];
-            var userInfo = user.getInfo(id);
+            var player = sPlayers[id];
             var updateNeeded = true;
-            if(userInfo.game)
+            if(player.game && player.game.started)
             {
-                var game = sGames[userInfo.game];
-                if(game && game.started)
-                {
-                    updateNeeded = false;
-                }
+                updateNeeded = false;
             }
             if(updateNeeded)
             {
@@ -271,25 +298,25 @@ function rpcEventsource(context)
 
 function endGame(context)
 {
-    if(context.user.game != '')
+    if(context.player.game)
     {
-        if(sGames[context.user.game].started)
+        if(context.player.game.started)
         {
-            sGames[context.user.game].ended = true;
+            context.player.game.ended = true;
         }
         else
         {
-            var gameid = context.user.game;
-            var game = sGames[gameid];
-            for(var i = 0; i < game.users.length; i++)
+            var gameid = player.game.id;
+            var game = context.player.game;
+            for(var i = 0; i < game.players.length; i++)
             {
-                var userInfo = user.getInfo(game.users[i]);
-                if(userInfo.game == game.id)
+                var player = sPlayers[game.players[i]];
+                if(player.game == game)
                 {
-                    userInfo.game = '';
+                    player.game = 0;
                 }
 
-                var connection = sConnections[game.users[i]];
+                var connection = sConnections[game.players[i].id];
                 if(connection)
                 {
                     updateConnection(connection);
@@ -297,7 +324,7 @@ function endGame(context)
             }
             delete sGames[gameid];
         }
-        context.user.game = '';
+        context.player.game = '';
     }
 
     updateLobby();
@@ -308,7 +335,7 @@ function newGame(context)
     endGame(context);
 
     var game = new Game(context.id);
-    context.user.game = game.id;
+    context.player.game = game;
 
     updateLobby();
 }
@@ -321,8 +348,8 @@ function joinGame(context)
 
     if(gameid && sGames.hasOwnProperty(gameid))
     {
-        sGames[gameid].users.push(context.id);
-        context.user.game = gameid;
+        sGames[gameid].players.push(sPlayers[context.id]);
+        context.player.game = sGames[gameid];
     }
     updateLobby();
 }
@@ -361,6 +388,8 @@ var sDispatch = {
     'client': rpcClient,
     'client.js': rpcClientJS,
     'eventsource': rpcEventsource,
+    'newPlayer': rpcNewPlayer,
+    'rename': rpcRename,
     'action': rpcAction
 };
 
@@ -380,11 +409,6 @@ processRequest = function(context)
     context.res.end('Bad blackout request (postdata:'+context.postData+')\n');
 }
 
-function redirect(context)
-{
-    util.redirect(context.res, '/'+context.id+'/blackout/client');
-}
-
 // ----------------------------------------------------------------------------
 // Exports
 
@@ -392,3 +416,4 @@ exports.connect = onConnect;
 exports.disconnect = onDisconnect;
 exports.processRequest = processRequest;
 exports.redirect = redirect;
+exports.findPlayer = findPlayer;
