@@ -46,6 +46,75 @@ function redirect(context)
 // ----------------------------------------------------------------------------
 // player
 
+function jsonPlayerNoGame(player)
+{
+    if(!player)
+        return player;
+
+    var p = {};
+    for(var k in player)
+    {
+        if(k == 'game')
+            continue;
+
+        if(player.hasOwnProperty(k))
+        {
+            p[k] = player[k];
+        }
+    }
+    return p;
+}
+
+function jsonPlayerPrunedGame(player)
+{
+    if(!player)
+        return player;
+
+    var p = {};
+    for(var k in player)
+    {
+        if(player.hasOwnProperty(k))
+        {
+            if(k == 'game')
+            {
+                p[k] = jsonGame(player[k]);
+            }
+            else
+            {
+                p[k] = player[k];
+            }
+        }
+    }
+    return p;
+}
+
+function jsonGame(game)
+{
+    if(!game)
+        return game;
+
+    var g = {};
+    for(var k in game)
+    {
+        if(game.hasOwnProperty(k))
+        {
+            if(k == 'players')
+            {
+                g.players = [];
+                for(var i = 0; i < game.players.length; i++)
+                {
+                    g.players.push(jsonPlayerNoGame(game.players[i]));
+                }
+            }
+            else
+            {
+                g[k] = game[k];
+            }
+        }
+    }
+    return g;
+}
+
 function findPlayer(context)
 {
     if(sPlayers.hasOwnProperty(context.id))
@@ -111,15 +180,17 @@ function updateConnection(connection)
             {
                 if(!sGames[id].started)
                 {
-                    games.push(sGames[id]);
+                    games.push(jsonGame(sGames[id]));
                 }
             }
         }
     }
 
+    console.log(JSON.stringify(jsonGame(game)));
+
     var data = {
         'type': 'update',
-        'game': game,
+        'player': jsonPlayerPrunedGame(player),
         'games': games
     };
     connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
@@ -306,11 +377,11 @@ function endGame(context)
         }
         else
         {
-            var gameid = player.game.id;
+            var gameid = context.player.game.id;
             var game = context.player.game;
             for(var i = 0; i < game.players.length; i++)
             {
-                var player = sPlayers[game.players[i]];
+                var player = game.players[i];
                 if(player.game == game)
                 {
                     player.game = 0;
@@ -332,6 +403,7 @@ function endGame(context)
 
 function newGame(context)
 {
+    console.log('newGame');
     endGame(context);
 
     var game = new Game(context.id);
@@ -377,7 +449,6 @@ function rpcAction(context)
         joinGame(context);
     }
 
-    updateConnection(sConnections[context.id]);
     return sendSuccess(context);
 }
 

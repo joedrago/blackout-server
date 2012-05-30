@@ -8,9 +8,9 @@ var context = {
 };
 
 var server = {
-    'game': '',
+    'player': 0,
     'games': [],
-    'users': {}
+    'players': {}
 };
 
 var actionUrl = '/' + context.id + '/blackout/action';
@@ -105,6 +105,21 @@ function makeMarkup(entries)
 }
 
 // ----------------------------------------------------------------------------
+// Helpers
+
+function findOwner(game)
+{
+    for(var i = 0; i < game.players.length; i++)
+    {
+        if(game.players[i].id == game.owner)
+        {
+            return game.players[i];
+        }
+    }
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
 // Render Tree Helpers
 
 function addText(entries, text)
@@ -149,22 +164,27 @@ function render()
     // decide what you can do right now
     var entries = [];
 
-    if(server.game && server.game.started)
+    if(server.player)
+    {
+        console.log('server.player.game ' + JSON.stringify(server.player.game));
+    }
+
+    if(server.player.game && server.player.game.started)
     {
     }
     else
     {
         // Lobby
 
-        if(server.game)
+        if(server.player.game)
         {
             addText(entries, 'Lobby (Creating Game):');
-            for(var i = 0; i < server.game.users.length; i++)
+            for(var i = 0; i < server.player.game.players.length; i++)
             {
-                var info = server.users[server.game.users[i].id];
+                var info = server.player.game.players[i];
                 addText(entries, '* User: ' + info.name);
             }
-            if(server.game.owner == context.id)
+            if(server.player.game.owner == context.id)
             {
                 addAction(entries, 'startGame', 'Start Game');
             }
@@ -179,7 +199,7 @@ function render()
         for(var i = 0; i < server.games.length; i++)
         {
             var game = server.games[i];
-            var ownerInfo = server.users[game.owner];
+            var ownerInfo = findOwner(game);
             addAction(entries, 'joinGame', 'Join Game ('+ownerInfo.name+')', 'game', game.id);
         }
     }
