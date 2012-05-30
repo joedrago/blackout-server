@@ -21,8 +21,24 @@ function sendError(context, text)
     return false;
 }
 
-function sendStaticFile(context, filename)
+function sendStaticFile(context)
 {
+    if(context.id != 'static')
+        return false;
+
+    var filenamePieces = [ context.module ];
+    filenamePieces = filenamePieces.concat(context.args);
+    var filename = filenamePieces.join('/');
+
+    if(!isStaticFile(filename))
+    {
+        // Send a 404
+        console.log('static file not found: '+filename);
+        context.res.writeHead(404, {'Content-Type': 'text/plain'});
+        context.res.end('static file not found');
+        return true;
+    }
+
     var mimeType = 'text/plain';
     var results = filename.match(/\.([^\.]+)$/);
     if(results)
@@ -30,27 +46,29 @@ function sendStaticFile(context, filename)
         var extension = results[1];
         if(extension == 'js')
             mimeType = 'text/javascript';
+        if(extension == 'css')
+            mimeType = 'text/css';
         else if(extension == 'html')
             mimeType = 'text/html';
     }
 
-    context.res.writeHead(200, {'Content-Type': 'text/plain'});
+    console.log('sending static file "'+filename+'" ['+mimeType+']');
+
+    context.res.writeHead(200, {'Content-Type': mimeType});
     var fileContents = fs.readFileSync('./static/'+filename);
     context.res.end(fileContents);
+    return true;
 }
 
 function processRequest(context)
 {
-    console.log("processRequest id: "+context.id);
-    if(isStaticFile(context.id))
-    {
-        return sendStaticFile(context, context.id);
-    }
-
     if(context.id == 'favicon.ico')
     {
         return sendError(context, 'favicon is dumb');
     }
+
+    if(sendStaticFile(context))
+        return;
 
     if(context.id != 'new')
     {
@@ -95,7 +113,7 @@ function getPostData(req, res)
     var args = path.split('/');
     args.shift();
 
-    console.log("Request for " + path + " received.");
+    //console.log("Request for " + path + " received.");
     //console.log("args: "+JSON.stringify(args));
 
     var id = args.shift();
@@ -127,12 +145,35 @@ function getPostData(req, res)
     }
 }
 
-var list = fs.readdirSync('./static');
-for(var i=0; i<list.length; i++)
+function addStaticDir(subdir)
 {
-    console.log("Static File: "+list[i]);
-    staticFiles[list[i]]++;
+    var dir = './static/';
+    if(subdir)
+        dir += subdir;
+    var list = fs.readdirSync(dir);
+    for(var i=0; i<list.length; i++)
+    {
+        var path = dir + list[i];
+        var s = fs.statSync(path);
+        if(!s.isDirectory())
+        {
+            staticFiles[subdir+list[i]]++;
+        }
+    }
 }
+
+addStaticDir('');
+addStaticDir('images/');
+
+var staticFileCount = 0;
+for(var i in staticFiles)
+{
+    if(staticFiles.hasOwnProperty(i))
+    {
+        staticFileCount++;
+    }
+}
+console.log('Serving '+staticFileCount+' static files.');
 
 http.createServer(getPostData).listen(8124);
 

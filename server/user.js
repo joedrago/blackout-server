@@ -37,7 +37,8 @@ user.newUser = function(context)
 
     user.users_[id] = {
         'id': id,
-        'name': "Anonymous"
+        'name': "Anonymous",
+        'game': ''
     };
     util.redirect(context.res, '/'+id+'/user/rename');
     return true;

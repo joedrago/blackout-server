@@ -2,6 +2,7 @@
 // Imports
 
 var util = require('./util.js');
+var user = require('./user.js');
 var template = require('./json-template.js');
 var fs = require('fs');
 
@@ -28,33 +29,66 @@ function Game(ownerid)
 
     this.owner = ownerid;
     this.users = [ ownerid ];
+    this.started = false;
+    this.ended = false;
 
     sGames[this.id] = this; // register with game list
 }
 
 // ----------------------------------------------------------------------------
-// Connection handlers
-
-function onConnect(id, res)
-{
-    console.log("attaching id: " + id);
-    sConnections[id] = { 'id':id, 'res':res };
-}
-
-function onDisconnect(id, res)
-{
-    delete sConnections[id];
-}
-
-// ----------------------------------------------------------------------------
 // Update Connection
+
+function addUsersFromGame(users, game)
+{
+    for(var i = 0; i < game.users.length; i++)
+    {
+        var id = game.users[i];
+        var userInfo = user.getInfo(id);
+        if(userInfo)
+        {
+            users[id] = userInfo;
+        }
+    }
+    return users;
+}
 
 function updateConnection(connection)
 {
-    var data = {};
+    var info = user.getInfo(connection.id);
+    var users = {};
+    var game = '';
+    var games = [];
 
-    // TOMORROW
+    console.log('sGames.length: ' + sGames.length);
 
+    if(info.game == '')
+    {
+        // List available games
+
+        for(var id in sGames)
+        {
+            if(sGames.hasOwnProperty(id))
+            {
+                if(!sGames[id].started)
+                {
+                    games.push(sGames[id]);
+                    users = addUsersFromGame(users, sGames[id]);
+                }
+            }
+        }
+    }
+    else
+    {
+        game = sGames[info.game];
+        users = addUsersFromGame(users, game);
+    }
+
+    var data = {
+        'type': 'update',
+        'game': game,
+        'users': users,
+        'games': games
+    };
     connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
 }
 
@@ -68,17 +102,29 @@ function sendSuccess(context)
     return true;
 }
 
-function interp(name, vars)
+function sendError(context)
 {
+    context.res.writeHead(200, {'Content-Type': 'text/plain'});
+    context.res.end('ERR');
+    return true;
+}
+
+function interp(context, name)
+{
+    var vars = { 'BLACKOUT_NAME': context.user.name, 'BLACKOUT_ID': context.id };
     var text;
     try
     {
-        var fileContents = fs.readFileSync('./templates/'+name+'.html', 'utf8');
+        var fileContents = fs.readFileSync('./templates/'+name, 'utf8');
         text = template.expand(fileContents, vars);
     }
     catch(err)
     {
         text = '';
+    }
+    if(text.length == 0)
+    {
+        console.log('WARNING: 0 bytes interped for '+name);
     }
     return text;
 }
@@ -88,33 +134,80 @@ function interp(name, vars)
 
 function tick()
 {
-//    console.log("-------------------");
-//    console.log("sConnections:\n"+JSON.stringify(sConnections));
-//    console.log("sGames:\n"+JSON.stringify(sGames));
-
-//    var connectionList = "connections: ";
-//    for(var i = 0; i < sConnections.length; i++)
+//    for(var id in sConnections)
 //    {
-//        connectionList += sConnections[i].id + " ";
-//    }
-//
-//    for(var i = 0; i < sConnections.length; i++)
-//    {
-//        var connection = sConnections[i];
-//        connection.res.write('data: ' + connectionList + '\n\n');
+//        if(sConnections.hasOwnProperty(id))
+//        {
+//            var connection = sConnections[id];
+//            connection.res.write('data: {"herp":"derp"}\n\n');
+//        }
 //    }
 };
 
 setInterval(function() { tick(); }, BLACKOUT_TICK_MS);
 
 // ----------------------------------------------------------------------------
-// Main: displays main page, tailored for a specific user
+// Client: displays main page, tailored for a specific user
 
-function rpcMain(context)
+function rpcClient(context)
 {
+    console.log("sending client HTML");
     context.res.writeHead(200, {'Content-Type': 'text/html'});
-    context.res.end(interp('main', {'name': context.user.name}));
+    context.res.end(interp(context, 'client.html'));
     return true;
+}
+
+function rpcClientJS(context)
+{
+    console.log("sending client JS");
+    context.res.writeHead(200, {'Content-Type': 'text/javascript'});
+    context.res.end(interp(context, 'client.js'));
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// Connection handlers
+
+function onConnect(id, res)
+{
+    console.log("attaching eventsource: " + id);
+    sConnections[id] = { 'id':id, 'res':res };
+
+    updateConnection(sConnections[id]);
+}
+
+function onDisconnect(id, res)
+{
+    console.log("disconecting eventsource: " + id);
+    delete sConnections[id];
+}
+
+// ----------------------------------------------------------------------------
+// Lobby
+
+function updateLobby()
+{
+    for(var id in sConnections)
+    {
+        if(sConnections.hasOwnProperty(id))
+        {
+            var connection = sConnections[id];
+            var userInfo = user.getInfo(id);
+            var updateNeeded = true;
+            if(userInfo.game)
+            {
+                var game = sGames[userInfo.game];
+                if(game && game.started)
+                {
+                    updateNeeded = false;
+                }
+            }
+            if(updateNeeded)
+            {
+                updateConnection(connection);
+            }
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -139,15 +232,75 @@ function rpcEventsource(context)
 }
 
 // ----------------------------------------------------------------------------
+// newGame: leaves any old game, puts user in a new game as the owner
+
+function endGame(context)
+{
+    if(context.user.game != '')
+    {
+        if(sGames[context.user.game].started)
+        {
+            sGames[context.user.game].ended = true;
+        }
+        else
+        {
+            var game = sGames[context.user.game];
+            for(var i = 0; i < game.users.length; i++)
+            {
+                var userInfo = user.getInfo(game.users[i]);
+                if(userInfo.game == game.id)
+                {
+                    userInfo.game = '';
+                }
+
+                var connection = sConnections[game.users[i]];
+                if(connection)
+                {
+                    updateConnection(connection);
+                }
+            }
+            delete sGames[context.user.game];
+        }
+        context.user.game = '';
+    }
+
+    updateLobby();
+}
+
+// ----------------------------------------------------------------------------
+// newGame: leaves any old game, puts user in a new game as the owner
+
+function newGame(context)
+{
+    endGame(context);
+
+    var game = new Game(context.id);
+    context.user.game = game.id;
+
+    updateLobby();
+}
+
+// ----------------------------------------------------------------------------
 // NewGame: leaves any old game, puts user in a new game as the owner
 
-function rpcNewGame(context)
+function rpcAction(context)
 {
-    var game = new Game(context.id);
-    context.user.gameid = game.id;
+    if(context.post.action == '')
+        return sendError(context);
+
+    console.log("Action: " + JSON.stringify(context.post));
+
+    if(context.post.action == 'newGame')
+    {
+        newGame(context);
+    }
+
+    if(context.post.action == 'endGame')
+    {
+        endGame(context);
+    }
 
     updateConnection(sConnections[context.id]);
-
     return sendSuccess(context);
 }
 
@@ -155,9 +308,10 @@ function rpcNewGame(context)
 // HTTP processing
 
 var sDispatch = {
-    'main': rpcMain,
+    'client': rpcClient,
+    'client.js': rpcClientJS,
     'eventsource': rpcEventsource,
-    'newgame': rpcNewGame
+    'action': rpcAction
 };
 
 processRequest = function(context)
@@ -178,7 +332,7 @@ processRequest = function(context)
 
 function redirect(context)
 {
-    util.redirect(context.res, '/'+context.id+'/blackout/main');
+    util.redirect(context.res, '/'+context.id+'/blackout/client');
 }
 
 // ----------------------------------------------------------------------------
