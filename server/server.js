@@ -2,34 +2,19 @@
 // Imports
 
 var fs = require('fs');
-var path = require('path');
 var http = require('http');
 var url = require('url');
-var querystring = require('querystring');
+var socketIO = require('socket.io');
+var nodeStatic = require('node-static');
 var template = require('./json-template.js');
-var blackout = require('./blackout.js');
+var fileServer = new(nodeStatic.Server)('./static');
 
 // ----------------------------------------------------------------------------
-// Constants
 
-var BLACKOUT_TICK_MS = 3 * 1000;
-
-// ----------------------------------------------------------------------------
-// Global structures holding all data
-
-var sConnections = {};
 var sPlayers = {};
-var sGames = {};
+var sConnections = {};
 
 // ----------------------------------------------------------------------------
-
-function redirect(res, url)
-{
-    res.writeHead(302, {
-        'Location': url
-    });
-    res.end();
-}
 
 var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz";
 
@@ -51,119 +36,10 @@ function randomString(length)
 }
 
 // ----------------------------------------------------------------------------
-// redirect
 
-function redirectClient(context)
+function interp(player, name)
 {
-    redirect(context.res, '/'+context.id+'/blackout/client');
-}
-
-// ----------------------------------------------------------------------------
-// player
-
-function findPlayer(context)
-{
-    if(sPlayers.hasOwnProperty(context.id))
-    {
-        context.player = sPlayers[context.id];
-        return true;
-    }
-
-    return false;
-}
-
-function rpcNewPlayer(context)
-{
-    var id;
-    {
-        id = randomString(8);
-    }
-    while(sPlayers.hasOwnProperty(id));
-
-    sPlayers[id] = {
-        'id': id,
-        'name': "Anonymous",
-        'game': 0
-    };
-    redirect(context.res, '/'+id+'/blackout/rename');
-    return true;
-}
-
-function rpcRename(context)
-{
-    console.log("context.post: " + JSON.stringify(context.post));
-    if(typeof context.post.name === 'string')
-    {
-        context.player.name = context.post['name'];
-        redirectClient(context);
-        return true;
-    }
-
-    context.res.writeHead(200, {'Content-Type': 'text/html'});
-    context.res.end('Pick a name: <form method="POST"><input type="text" name="name" value="'+context.player.name+'"></form>\n');
-    return true;
-}
-
-// ----------------------------------------------------------------------------
-// Update Connection
-
-function updateConnection(connection)
-{
-    console.log("updateConnection: " + connection.id);
-
-    var player = sPlayers[connection.id];
-    var games = [];
-
-    if(!player.game)
-    {
-        // List available games
-
-        for(var id in sGames)
-        {
-            if(sGames.hasOwnProperty(id))
-            {
-                if(sGames[id].state == blackout.State.LOBBY)
-                {
-                    var g = sGames[id];
-                    games.push({ id: id, owner: g.players[0]});
-                }
-            }
-        }
-    }
-
-    var data = {
-        'type': 'update',
-        'player': player,
-        'games': games
-    };
-    connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
-}
-
-// ----------------------------------------------------------------------------
-// Helpers
-
-function sendReply(context, reply)
-{
-    context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end(reply);
-    return true;
-}
-
-function sendSuccess(context)
-{
-    return sendReply(context, 'OK');
-}
-
-function sendError(context)
-{
-    context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end('ERR');
-    return true;
-}
-
-function interp(context, name)
-{
-    var vars = { 'BLACKOUT_NAME': context.player.name, 'BLACKOUT_ID': context.id };
+    var vars = { 'BLACKOUT_NAME': player.name, 'BLACKOUT_ID': player.id };
     var text;
     try
     {
@@ -182,395 +58,82 @@ function interp(context, name)
 }
 
 // ----------------------------------------------------------------------------
-// Timed event to cleanup, do pings, age out games and players, etc
 
-function tick()
+function redirect(res, url)
 {
-//    for(var id in sConnections)
-//    {
-//        if(sConnections.hasOwnProperty(id))
-//        {
-//            var connection = sConnections[id];
-//            connection.res.write('data: {"herp":"derp"}\n\n');
-//        }
-//    }
-};
-
-setInterval(function() { tick(); }, BLACKOUT_TICK_MS);
-
-// ----------------------------------------------------------------------------
-// Client: displays main page, tailored for a specific user
-
-function rpcClient(context)
-{
-    console.log("sending client HTML");
-    context.res.writeHead(200, {'Content-Type': 'text/html'});
-    context.res.end(interp(context, 'client.html'));
-    return true;
-}
-
-function rpcClientJS(context)
-{
-    console.log("sending client JS");
-    context.res.writeHead(200, {'Content-Type': 'text/javascript'});
-    context.res.end(interp(context, 'client.js'));
-    return true;
+    res.writeHead(302, {
+        'Location': url
+    });
+    res.end();
 }
 
 // ----------------------------------------------------------------------------
-// Connection handlers
 
-function onConnect(id, res)
-{
-    console.log("attaching eventsource: " + id);
-    sConnections[id] = { 'id':id, 'res':res };
-
-    updateConnection(sConnections[id]);
-}
-
-function onDisconnect(id, res)
-{
-    console.log("disconecting eventsource: " + id);
-    delete sConnections[id];
-}
-
-// ----------------------------------------------------------------------------
-// Lobby
-
-function updateLobby()
-{
-    for(var id in sConnections)
-    {
-        if(sConnections.hasOwnProperty(id))
-        {
-            var connection = sConnections[id];
-            var player = sPlayers[connection.id];
-            var updateNeeded = true;
-            if(player.game && (player.game.state != blackout.State.LOBBY))
-            {
-                updateNeeded = false;
-            }
-            if(updateNeeded)
-            {
-                updateConnection(connection);
-            }
-        }
-    }
-}
-
-function updateGame(context)
-{
-    if(context.player.game)
-    {
-        var game = context.player.game;
-        for(var i = 0; i < game.players.length; i++)
-        {
-            if(sConnections.hasOwnProperty(game.players[i].id))
-            {
-                updateConnection(sConnections[game.players[i].id]);
-            }
-        }
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Creates persistent connection for pushing data
-
-function rpcEventsource(context)
-{
-    context.res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
-            });
-
-    context.res.write(':' + Array(2049).join(' ') + '\n'); //2kb padding for IE
-
-    onConnect(context.id, context.res);
-    context.res.socket.on('close', function () {
-            onDisconnect(context.id, context.res);
-            });
-    return true;
-}
-
-// ----------------------------------------------------------------------------
-// Game create/join
-
-function endGame(context)
-{
-    return sendSuccess(context);
-}
-
-function newGame(context)
-{
-    console.log('newGame');
-    endGame(context);
-
-    var id;
-
-    do
-    {
-        id = randomString(8);
-    } while(sGames.hasOwnProperty(id));
-
-    var params =
-    {
-        'id': id,
-        'players': [
-            {'id': context.id, 'name': context.player.name }
-        ]
-    };
-    var game = blackout.newGame(params);
-    sGames[id] = game;
-    context.player.game = game;
-
-    updateLobby();
-
-    return sendSuccess(context);
-}
-
-function joinGame(context)
-{
-    endGame(context);
-
-    var gameid = context.post.game;
-
-    if(gameid && sGames.hasOwnProperty(gameid))
-    {
-        for(var i = 0; i < sGames[gameid].players.length; i++)
-        {
-            if(sGames[gameid].players[i].id == context.id)
-            {
-                return sendReply(context, 'alreadyInThisGame');
-            }
-        }
-        sGames[gameid].players.push({'id':context.id, 'name': context.player.name});
-        context.player.game = sGames[gameid];
-    }
-    updateLobby();
-
-    return sendSuccess(context);
-}
-
-// ----------------------------------------------------------------------------
-// Action dispatch
-
-function rpcAction(context)
-{
-    if(context.post.action == '')
-        return sendError(context);
-
-    console.log("Action: " + JSON.stringify(context.post));
-
-    if(context.post.action == 'newGame')
-    {
-        return newGame(context);
-    }
-    else if(context.post.action == 'endGame')
-    {
-        return endGame(context);
-    }
-    else if(context.post.action == 'joinGame')
-    {
-        return joinGame(context);
-    }
-    else
-    {
-        if(context.player.game)
-        {
-            console.log('running action: ' + JSON.stringify(context.post));
-            var reply = context.player.game.action(context.post);
-            updateGame(context);
-            return sendReply(context, reply);
-        }
-    }
-
-    return sendSuccess(context);
-}
-
-// ----------------------------------------------------------------------------
-// Static serving
-
-var staticFiles = {};
-
-function isStaticFile(filename)
-{
-    return staticFiles.hasOwnProperty(filename);
-}
-
-function sendError(context, text)
-{
-    context.res.writeHead(500, {'Content-Type': 'text/plain'});
-    context.res.end('ERROR: '+text+' (path:"'+context.path+'" postdata:"'+context.rawPostData+'")\n');
-    return false;
-}
-
-function sendStaticFile(context)
-{
-    if(context.id != 'static')
-        return false;
-
-    var filenamePieces = [ context.module ];
-    filenamePieces = filenamePieces.concat(context.args);
-    var filename = filenamePieces.join('/');
-
-    if(!isStaticFile(filename))
-    {
-        // Send a 404
-        console.log('static file not found: '+filename);
-        context.res.writeHead(404, {'Content-Type': 'text/plain'});
-        context.res.end('static file not found');
-        return true;
-    }
-
-    var mimeType = 'text/plain';
-    var results = filename.match(/\.([^\.]+)$/);
-    if(results)
-    {
-        var extension = results[1];
-        if(extension == 'js')
-            mimeType = 'text/javascript';
-        if(extension == 'css')
-            mimeType = 'text/css';
-        else if(extension == 'html')
-            mimeType = 'text/html';
-    }
-
-    console.log('sending static file "'+filename+'" ['+mimeType+']');
-
-    context.res.writeHead(200, {'Content-Type': mimeType});
-    var fileContents = fs.readFileSync('./static/'+filename);
-    context.res.end(fileContents);
-    return true;
-}
-
-// ----------------------------------------------------------------------------
-// Dispatch
-
-var sDispatch = {
-    'client': rpcClient,
-    'client.js': rpcClientJS,
-    'eventsource': rpcEventsource,
-    'newPlayer': rpcNewPlayer,
-    'rename': rpcRename,
-    'action': rpcAction
-};
-
-function processRequest(context)
-{
-    if(context.id == 'favicon.ico')
-    {
-        return sendError(context, 'favicon is dumb');
-    }
-
-    if(sendStaticFile(context))
-        return;
-
-    if(context.id != 'new')
-    {
-        if(!findPlayer(context))
-        {
-            return sendError(context, 'Unknown player: ' + context.id);
-        }
-    }
-
-    context.post = 0;
-    if(context.rawPostData.length > 0)
-    {
-        try
-        {
-            context.post = JSON.parse(context.rawPostData);
-        }
-        catch(err)
-        {
-            context.post = querystring.parse(context.rawPostData);
-        }
-    }
-    if(!context.post)
-        context.post = {};
-
-    var cmd = context.args.shift();
-
-    if(sDispatch.hasOwnProperty(cmd))
-    {
-        if(sDispatch[cmd](context))
-            return;
-    }
-
-    context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end('Bad blackout request (postdata:'+context.postData+')\n');
-}
-
-function buildContext(req, res)
+function onHttpRequest(req, res)
 {
     var parsedUrl = url.parse(req.url);
     var path = parsedUrl.pathname;
+    var player = 0;
     var args = path.split('/');
     args.shift();
 
-    console.log("Request for " + path + " received.");
-    console.log("args: "+JSON.stringify(args));
-
-    var id = args.shift();
-    var module = args.shift();
-
-    var context = {
-        'path': path,
-        'req': req,
-        'res': res,
-        'rawPostData':'',
-        'id': id,
-        'module': module,
-        'args': args
-    };
-
-    if(id === '')
+    if((args[0] == 'client')
+    || (args[0] == 'clientjs'))
     {
-        redirect(res, '/new/blackout/newPlayer');
+        if(args[1])
+        {
+            player = sPlayers[args[1]];
+        }
+
+        if(!player)
+        {
+            var id;
+            {
+                id = randomString(8);
+            }
+            while(sPlayers.hasOwnProperty(id));
+
+            player = {
+                'id': id,
+                'name': 'Anonymous',
+                'game': 0
+            };
+            sPlayers[id] = player;
+
+            redirect(res, '/client/' + player.id);
+        }
+        else if(args[0] == 'client')
+        {
+            res.writeHead(200, {'Content-Type': 'text/html'});
+            res.end(interp(player, 'client.html'));
+        }
+        else if(args[0] == 'clientjs')
+        {
+            res.writeHead(200, {'Content-Type': 'text/javascript'});
+            res.end(interp(player, 'client.js'));
+        }
     }
     else
     {
-        req.setEncoding("utf8");
-        req.addListener("data", function(rawPostDataChunk) {
-                context.rawPostData += rawPostDataChunk;
-                });
-        req.addListener("end", function() {
-                processRequest(context);
-                });
+        fileServer.serve(req, res);
     }
 }
 
-function addStaticDir(subdir)
-{
-    var dir = './static/';
-    if(subdir)
-        dir += subdir;
-    var list = fs.readdirSync(dir);
-    for(var i=0; i<list.length; i++)
-    {
-        var path = dir + list[i];
-        var s = fs.statSync(path);
-        if(!s.isDirectory())
-        {
-            staticFiles[subdir+list[i]]++;
-        }
-    }
-}
+// ----------------------------------------------------------------------------
 
-addStaticDir('');
-addStaticDir('images/');
+var server = http.createServer(onHttpRequest);
+var io = socketIO.listen(server);
 
-var staticFileCount = 0;
-for(var i in staticFiles)
-{
-    if(staticFiles.hasOwnProperty(i))
-    {
-        staticFileCount++;
-    }
-}
-console.log('Serving '+staticFileCount+' static files.');
+server.listen(8124);
 
-http.createServer(buildContext).listen(8124);
+io.sockets.on('connection', function (socket) {
+      socket.emit('news', { hello: 'world' });
+        socket.on('my other event', function (data) {
+                console.log(data);
+                  });
+});
+
+//io.sockets.on('connection', onDisconnect);
+//io.sockets.on('disconnect', onDisconnect);
 
 console.log('Server running at http://127.0.0.1:8124/');

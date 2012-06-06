@@ -421,6 +421,12 @@ $(document).bind("pagebeforechange", function( e, data )
 
 function ready()
 {
+    var socket = io.connect('');
+    socket.on('news', function (data) {
+            console.log(data);
+            socket.emit('my other event', { my: 'data' });
+            });
+
     // Attach eventsource
     $.eventsource({
         label:    'blackoutEvents',
