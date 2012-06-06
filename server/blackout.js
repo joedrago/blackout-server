@@ -1,17 +1,18 @@
 var MIN_PLAYERS = 3;
-var MAX_LOG_LINES = 40;
+var MAX_LOG_LINES = 5;
 var OK = 'OK';
 var State =
 {
     LOBBY: 'lobby',
 
-    GAMESUMMARY: 'gameSummary',
+    PREGAMESUMMARY: 'preGameSummary',
 
     BID: 'bid',
     BIDSUMMARY: 'bidSummary',
     TRICK: 'trick',
-
     ROUNDSUMMARY: 'roundSummary',
+
+    POSTGAMESUMMARY: 'postGameSummary',
 };
 
 var Suit =
@@ -131,6 +132,7 @@ function Game(params)
     else
     {
         // new game
+        this.id = params.id;
         this.state = State.LOBBY;
         this.players = params.players;
         this.counter = 0;
@@ -249,7 +251,7 @@ Game.prototype.reset = function(params)
         player.score = 0;
         player.hand = [];
     }
-    this.state = State.GAMESUMMARY;
+    this.state = State.PREGAMESUMMARY;
     this.counter = 0;
     this.rounds = [3, 3];
     this.nextRound = 0;
@@ -331,7 +333,7 @@ Game.prototype.endTrick = function()
 
         if(this.nextRound >= this.rounds.length)
         {
-            this.state = State.GAMESUMMARY;
+            this.state = State.POSTGAMESUMMARY;
         }
         else
         {
@@ -355,7 +357,7 @@ Game.prototype.next = function(params)
             {
                 return this.reset(params);
             }
-        case State.GAMESUMMARY:
+        case State.PREGAMESUMMARY:
             {
                 return this.startBid();
             }
@@ -366,6 +368,10 @@ Game.prototype.next = function(params)
         case State.ROUNDSUMMARY:
             {
                 return this.startBid();
+            }
+        case State.POSTGAMESUMMARY:
+            {
+                return 'gameOver';
             }
         default:
             {
@@ -387,6 +393,8 @@ Game.prototype.bid = function(params)
     {
         return 'notYourTurn';
     }
+
+    params.bid = Number(params.bid);
 
     if((params.bid < 0) || (params.bid > this.tricks))
     {
@@ -426,6 +434,8 @@ Game.prototype.play = function(params)
     {
         return 'notYourTurn';
     }
+
+    params.index = Number(params.index);
 
     if((params.index < 0) || (params.index >= currentPlayer.hand.length))
     {
@@ -542,15 +552,6 @@ Game.prototype.play = function(params)
 // ---------------------------------------------------------------------------------------------------------------------------
 // Action dispatch
 
-var sDispatch =
-{
-    'next': Game.prototype.next,
-    'bid': Game.prototype.bid,
-    'play': Game.prototype.play,
-
-    'quit': Game.prototype.quit
-};
-
 Game.prototype.action = function(params)
 {
     if((params.action != 'quit')                                // the only action everyone can do
@@ -580,6 +581,17 @@ Game.prototype.action = function(params)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// Exports
+
+exports.newGame = function(params)
+{
+    var game = new Game(params);
+    return game;
+}
+
+exports.State = State;
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // Test helpers
 
 function perform(game, expl, action)
@@ -595,8 +607,11 @@ function perform(game, expl, action)
 // ---------------------------------------------------------------------------------------------------------------------------
 // Test code
 
+/*
+
 var params =
 {
+    'id': '555',
     'players': [
         {'id':'j', 'name': 'joe'}
     ]
@@ -607,7 +622,7 @@ game.players.push({'id':'d', 'name': 'dave'});
 
 perform(game, "next", {'counter':game.counter, 'id':'j', 'action': 'next'}); // start game
 
-for(var rounds = 0; rounds < 20; rounds++)
+for(var rounds = 0; rounds < 10; rounds++)
 {
     perform(game, "next", {'counter':game.counter, 'id':'j', 'action': 'next'}); // start bid
 
@@ -629,3 +644,5 @@ for(var rounds = 0; rounds < 20; rounds++)
         if(OK == perform(game, "play", {'counter':game.counter, 'id':'j', 'action': 'play', 'index':i}))
             break;
 }
+
+*/

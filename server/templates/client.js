@@ -9,11 +9,50 @@ var context = {
 
 var server = {
     'player': 0,
-    'games': [],
-    'players': {}
+    'games': []
 };
 
 var actionUrl = '/' + context.id + '/blackout/action';
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Card
+
+var Suit =
+{
+    NONE: -1,
+    CLUBS: 0,
+    DIAMONDS: 1,
+    HEARTS: 2,
+    SPADES: 3
+};
+
+var SuitName = ['Clubs', 'Diamonds', 'Hearts', 'Spades'];
+var ShortSuitName = ['C', 'D', 'H', 'S'];
+
+function Card(x)
+{
+    this.suit  = Math.floor(x / 13);
+    this.value = Math.floor(x % 13);
+    switch(this.value)
+    {
+        case 9:
+            this.valueName = 'J';
+            break;
+        case 10:
+            this.valueName = 'Q';
+            break;
+        case 11:
+            this.valueName = 'K';
+            break;
+        case 12:
+            this.valueName = 'A';
+            break;
+        default:
+            this.valueName = String(this.value + 2);
+            break;
+    }
+    this.name = this.valueName + ShortSuitName[this.suit];
+}
 
 // ----------------------------------------------------------------------------
 // QueryString Manipulation
@@ -90,6 +129,13 @@ function makeMarkup(entries)
             {
                 e.args.push('action');
                 e.args.push(e.action);
+                e.args.push('id');
+                e.args.push(server.player.id);
+                if(server.player.game)
+                {
+                    e.args.push('counter');
+                    e.args.push(server.player.game.counter);
+                }
                 var qs = makeQueryString(e.args);
                 url = '#dyn' + qs;
             }
@@ -102,21 +148,6 @@ function makeMarkup(entries)
     if(inList)
         markup += '</ul>';
     return markup;
-}
-
-// ----------------------------------------------------------------------------
-// Helpers
-
-function findOwner(game)
-{
-    for(var i = 0; i < game.players.length; i++)
-    {
-        if(game.players[i].id == game.owner)
-        {
-            return game.players[i];
-        }
-    }
-    return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -158,19 +189,108 @@ function addAction()
 // ----------------------------------------------------------------------------
 // Renderer
 
+function renderGame()
+{
+    var entries = [];
+    var game = server.player.game;
+    var currentPlayer = game.players[game.turn];
+    var me;
+
+    for(var i = 0; i < game.players.length; i++)
+    {
+        if(game.players[i].id == context.id)
+        {
+            me = game.players[i];
+            break;
+        }
+    }
+
+    addText(entries, "In Game (State:" + game.state + ")");
+
+    if((game.state == 'bid')
+    || (game.state == 'bidsummary')
+    || (game.state == 'trick'))
+    {
+        for(var i = 0; i < me.hand.length; i++)
+        {
+            var card = new Card(me.hand[i]);
+            addText(entries, "Card: " + card.name);
+        }
+    }
+
+    if(game.state == 'trick')
+    {
+        for(var i = 0; i < game.pile.length; i++)
+        {
+            var card = new Card(game.pile[i]);
+            addText(entries, "Pile: " + card.name);
+        }
+    }
+
+    switch(game.state)
+    {
+        case 'preGameSummary':
+        case 'bidSummary':
+        case 'roundSummary':
+        case 'postGameSummary':
+            {
+                if(game.players[0].id == context.id)
+                {
+                    addAction(entries, 'next', 'Next');
+                }
+                else
+                {
+                    addText(entries, 'Waiting for game owner...');
+                }
+                break;
+            }
+
+        case 'bid':
+            {
+                if(currentPlayer.id == context.id)
+                {
+                    for(var i = 0; i <= currentPlayer.hand.length; i++)
+                    {
+                        addAction(entries, 'bid', 'Bid ' + i, 'bid', i);
+                    }
+                }
+                else
+                {
+                    addText(entries, "Please wait, not your turn");
+                }
+                break;
+            }
+
+        case 'trick':
+            {
+                if(currentPlayer.id == context.id)
+                {
+                    for(var i = 0; i < me.hand.length; i++)
+                    {
+                        var card = new Card(me.hand[i]);
+                        addAction(entries, 'play', 'Play ' + card.name, 'index', i);
+                    }
+                }
+                else
+                {
+                    addText(entries, "Please wait, not your turn");
+                }
+                break;
+            }
+    }
+
+    return entries;
+}
+
 function render()
 {
     // ------------------------------------------------------------------------
     // decide what you can do right now
     var entries = [];
 
-    if(server.player)
+    if(server.player.game && server.player.game.state != 'lobby')
     {
-        console.log('server.player.game ' + JSON.stringify(server.player.game));
-    }
-
-    if(server.player.game && server.player.game.started)
-    {
+        entries = renderGame();
     }
     else
     {
@@ -184,9 +304,9 @@ function render()
                 var info = server.player.game.players[i];
                 addText(entries, '* User: ' + info.name);
             }
-            if(server.player.game.owner == context.id)
+            if(server.player.game.players[0].id == context.id)
             {
-                addAction(entries, 'startGame', 'Start Game');
+                addAction(entries, 'next', 'Start Game');
             }
             addAction(entries, 'endGame', 'End Game');
         }
@@ -199,7 +319,7 @@ function render()
         for(var i = 0; i < server.games.length; i++)
         {
             var game = server.games[i];
-            var ownerInfo = findOwner(game);
+            var ownerInfo = game.owner;
             addAction(entries, 'joinGame', 'Join Game ('+ownerInfo.name+')', 'game', game.id);
         }
     }
@@ -207,12 +327,21 @@ function render()
     addText(entries, 'Options');
     addURL(entries, '/'+context.id+'/user/rename', 'Rename');
 
+    if(server.player.game && server.player.game.log)
+    {
+        addText(entries, 'Log');
+        for(var i = 0; i < server.player.game.log.length; i++)
+        {
+            addText(entries, ' * ' + server.player.game.log[i]);
+        }
+    }
+
     // ------------------------------------------------------------------------
     // update page
     var page = $('#dyn');
     var content = page.children(":jqmData(role=content)");
     var markup = makeMarkup(entries);
-    console.log('Markup: ' + markup); // chatty
+    //console.log('Markup: ' + markup); // chatty
 
     // ------------------------------------------------------------------------
     // update header
@@ -231,7 +360,7 @@ function render()
 
 function onEvent(data)
 {
-    console.log("Event: " + JSON.stringify(data));
+    //console.log("Event: " + JSON.stringify(data));
 
     if(data.type == 'update')
     {
@@ -241,7 +370,6 @@ function onEvent(data)
     render();
 }
 
-
 // ----------------------------------------------------------------------------
 // Action Handler (User did something)
 
@@ -249,7 +377,12 @@ function onAction(args)
 {
     $.ajax(actionUrl, {
             'type': 'POST',
-            'data': JSON.stringify(args)
+            'dataType': 'text',
+            'data': JSON.stringify(args),
+            'success': function(data, textStatus, xhr)
+            {
+                console.log("Reply: " + data);
+            }
         });
 
     render();

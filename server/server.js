@@ -7,6 +7,7 @@ var http = require('http');
 var url = require('url');
 var querystring = require('querystring');
 var template = require('./json-template.js');
+var blackout = require('./blackout.js');
 
 // ----------------------------------------------------------------------------
 // Constants
@@ -50,24 +51,6 @@ function randomString(length)
 }
 
 // ----------------------------------------------------------------------------
-// class Game
-
-function Game(ownerid)
-{
-    do
-    {
-        this.id = randomString(8);
-    } while(sGames.hasOwnProperty(this.id));
-
-    this.owner = ownerid;
-    this.players = [ sPlayers[ownerid] ];
-    this.started = false;
-    this.ended = false;
-
-    sGames[this.id] = this; // register with game list
-}
-
-// ----------------------------------------------------------------------------
 // redirect
 
 function redirectClient(context)
@@ -77,75 +60,6 @@ function redirectClient(context)
 
 // ----------------------------------------------------------------------------
 // player
-
-function jsonPlayerNoGame(player)
-{
-    if(!player)
-        return player;
-
-    var p = {};
-    for(var k in player)
-    {
-        if(k == 'game')
-            continue;
-
-        if(player.hasOwnProperty(k))
-        {
-            p[k] = player[k];
-        }
-    }
-    return p;
-}
-
-function jsonPlayerPrunedGame(player)
-{
-    if(!player)
-        return player;
-
-    var p = {};
-    for(var k in player)
-    {
-        if(player.hasOwnProperty(k))
-        {
-            if(k == 'game')
-            {
-                p[k] = jsonGame(player[k]);
-            }
-            else
-            {
-                p[k] = player[k];
-            }
-        }
-    }
-    return p;
-}
-
-function jsonGame(game)
-{
-    if(!game)
-        return game;
-
-    var g = {};
-    for(var k in game)
-    {
-        if(game.hasOwnProperty(k))
-        {
-            if(k == 'players')
-            {
-                g.players = [];
-                for(var i = 0; i < game.players.length; i++)
-                {
-                    g.players.push(jsonPlayerNoGame(game.players[i]));
-                }
-            }
-            else
-            {
-                g[k] = game[k];
-            }
-        }
-    }
-    return g;
-}
 
 function findPlayer(context)
 {
@@ -195,15 +109,12 @@ function rpcRename(context)
 
 function updateConnection(connection)
 {
+    console.log("updateConnection: " + connection.id);
+
     var player = sPlayers[connection.id];
-    var game = 0;
     var games = [];
 
-    if(player.game)
-    {
-        game = player.game;
-    }
-    else
+    if(!player.game)
     {
         // List available games
 
@@ -211,19 +122,18 @@ function updateConnection(connection)
         {
             if(sGames.hasOwnProperty(id))
             {
-                if(!sGames[id].started)
+                if(sGames[id].state == blackout.State.LOBBY)
                 {
-                    games.push(jsonGame(sGames[id]));
+                    var g = sGames[id];
+                    games.push({ id: id, owner: g.players[0]});
                 }
             }
         }
     }
 
-    console.log(JSON.stringify(jsonGame(game)));
-
     var data = {
         'type': 'update',
-        'player': jsonPlayerPrunedGame(player),
+        'player': player,
         'games': games
     };
     connection.res.write('data: ' + JSON.stringify(data) + '\n\n');
@@ -232,11 +142,16 @@ function updateConnection(connection)
 // ----------------------------------------------------------------------------
 // Helpers
 
-function sendSuccess(context)
+function sendReply(context, reply)
 {
     context.res.writeHead(200, {'Content-Type': 'text/plain'});
-    context.res.end('OK');
+    context.res.end(reply);
     return true;
+}
+
+function sendSuccess(context)
+{
+    return sendReply(context, 'OK');
 }
 
 function sendError(context)
@@ -331,7 +246,7 @@ function updateLobby()
             var connection = sConnections[id];
             var player = sPlayers[connection.id];
             var updateNeeded = true;
-            if(player.game && player.game.started)
+            if(player.game && (player.game.state != blackout.State.LOBBY))
             {
                 updateNeeded = false;
             }
@@ -343,7 +258,7 @@ function updateLobby()
     }
 }
 
-function updateGame()
+function updateGame(context)
 {
     if(context.player.game)
     {
@@ -353,24 +268,6 @@ function updateGame()
             if(sConnections.hasOwnProperty(game.players[i].id))
             {
                 updateConnection(sConnections[game.players[i].id]);
-            }
-        }
-    }
-
-    for(var id in sConnections)
-    {
-        if(sConnections.hasOwnProperty(id))
-        {
-            var connection = sConnections[id];
-            var player = sPlayers[id];
-            var updateNeeded = true;
-            if(player.game && player.game.started)
-            {
-                updateNeeded = false;
-            }
-            if(updateNeeded)
-            {
-                updateConnection(connection);
             }
         }
     }
@@ -402,36 +299,7 @@ function rpcEventsource(context)
 
 function endGame(context)
 {
-    if(context.player.game)
-    {
-        if(context.player.game.started)
-        {
-            context.player.game.ended = true;
-        }
-        else
-        {
-            var gameid = context.player.game.id;
-            var game = context.player.game;
-            for(var i = 0; i < game.players.length; i++)
-            {
-                var player = game.players[i];
-                if(player.game == game)
-                {
-                    player.game = 0;
-                }
-
-                var connection = sConnections[game.players[i].id];
-                if(connection)
-                {
-                    updateConnection(connection);
-                }
-            }
-            delete sGames[gameid];
-        }
-        context.player.game = '';
-    }
-
-    updateLobby();
+    return sendSuccess(context);
 }
 
 function newGame(context)
@@ -439,10 +307,27 @@ function newGame(context)
     console.log('newGame');
     endGame(context);
 
-    var game = new Game(context.id);
+    var id;
+
+    do
+    {
+        id = randomString(8);
+    } while(sGames.hasOwnProperty(id));
+
+    var params =
+    {
+        'id': id,
+        'players': [
+            {'id': context.id, 'name': context.player.name }
+        ]
+    };
+    var game = blackout.newGame(params);
+    sGames[id] = game;
     context.player.game = game;
 
     updateLobby();
+
+    return sendSuccess(context);
 }
 
 function joinGame(context)
@@ -453,10 +338,19 @@ function joinGame(context)
 
     if(gameid && sGames.hasOwnProperty(gameid))
     {
-        sGames[gameid].players.push(sPlayers[context.id]);
+        for(var i = 0; i < sGames[gameid].players.length; i++)
+        {
+            if(sGames[gameid].players[i].id == context.id)
+            {
+                return sendReply(context, 'alreadyInThisGame');
+            }
+        }
+        sGames[gameid].players.push({'id':context.id, 'name': context.player.name});
         context.player.game = sGames[gameid];
     }
     updateLobby();
+
+    return sendSuccess(context);
 }
 
 // ----------------------------------------------------------------------------
@@ -471,15 +365,25 @@ function rpcAction(context)
 
     if(context.post.action == 'newGame')
     {
-        newGame(context);
+        return newGame(context);
     }
     else if(context.post.action == 'endGame')
     {
-        endGame(context);
+        return endGame(context);
     }
     else if(context.post.action == 'joinGame')
     {
-        joinGame(context);
+        return joinGame(context);
+    }
+    else
+    {
+        if(context.player.game)
+        {
+            console.log('running action: ' + JSON.stringify(context.post));
+            var reply = context.player.game.action(context.post);
+            updateGame(context);
+            return sendReply(context, reply);
+        }
     }
 
     return sendSuccess(context);
