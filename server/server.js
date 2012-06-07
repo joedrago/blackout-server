@@ -121,17 +121,37 @@ function onHttpRequest(req, res)
 
 // ----------------------------------------------------------------------------
 
+function onHello(socket, data)
+{
+    console.log('Got Hello: ' + JSON.stringify(data));
+}
+
+function onDisconnect(socket, data)
+{
+}
+
+function onConnect(socket)
+{
+    socket.on('hello', function (data) {
+            onHello(socket, data);
+            });
+    socket.on('disconnect', function () {
+            onDisconnect(socket);
+            });
+}
+
+// ----------------------------------------------------------------------------
+
 var server = http.createServer(onHttpRequest);
 var io = socketIO.listen(server);
 
 server.listen(8124);
 
 io.sockets.on('connection', function (socket) {
-      socket.emit('news', { hello: 'world' });
-        socket.on('my other event', function (data) {
-                console.log(data);
-                  });
+      //socket.emit('news', { hello: 'world' });
+      onConnect(socket);
 });
+
 
 //io.sockets.on('connection', onDisconnect);
 //io.sockets.on('disconnect', onDisconnect);
