@@ -2,20 +2,133 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, target-densitydpi=device-dpi"/>
 <title>Blackout</title>
-<link rel="stylesheet"  href="/jquery.mobile-1.1.0.min.css" />
 <script src="/jquery.min.js"></script>
-<script src="/jquery.eventsource.js"></script>
-<script src="/jquery.mobile-1.1.0.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
-<script src="/clientjs/{BLACKOUT_ID}"></script>
 </head>
-
 <body>
-<div id="dyn" data-role="page">
-  <div data-role="header"><h1></h1></div>
-  <div data-role="content"></div>
+<style>
+
+#game {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width:  960px;
+    height: 640px;
+
+    background-color: #00aa00;
+}
+
+#cards {
+    position: absolute;
+    left: 0px;
+    top: 517px;
+}
+
+@media all and (max-device-width: 960px) and (orientation: landscape)
+{
+    /* Droid 4 */
+
+    #game {
+        width:  960px;
+        height: 502px;
+    }
+
+    #cards {
+        top: 379px;
+    }
+}
+
+#cards_rel {
+    position: relative;
+    width:  100%;
+    height: 100%;
+}
+
+.card {
+    position: absolute;
+    width: 79px;
+    height: 123px;
+    background: url('/cards.png');
+}
+
+#playButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 10px;
+    top: 200px;
+    background-color: #ff0;
+}
+
+#nextButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 220px;
+    top: 200px;
+    background-color: #f0f;
+}
+
+#newGameButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 430px;
+    top: 200px;
+    background-color: #f0f;
+}
+
+#joinGameButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 640px;
+    top: 200px;
+    background-color: #f0f;
+}
+
+#state {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+
+    padding: 5px;
+}
+
+</style>
+<div id="game">
+<div id="state">State</div>
+<div id="playButton" onclick="onPlayButton()">Play Button</div>
+<div id="nextButton" onclick="onNextButton()">Next Button</div>
+<div id="newGameButton" onclick="onNewGameButton()">NewGame Button</div>
+<div id="joinGameButton" onclick="onJoinGameButton()">JoinGame Button</div>
+<div id="cards">
+    <div id="cards_rel">
+        <div class="card" id="card0"  onclick="clickCard(0)"></div>
+        <div class="card" id="card1"  onclick="clickCard(1)"></div>
+        <div class="card" id="card2"  onclick="clickCard(2)"></div>
+        <div class="card" id="card3"  onclick="clickCard(3)"></div>
+        <div class="card" id="card4"  onclick="clickCard(4)"></div>
+        <div class="card" id="card5"  onclick="clickCard(5)"></div>
+        <div class="card" id="card6"  onclick="clickCard(6)"></div>
+        <div class="card" id="card7"  onclick="clickCard(7)"></div>
+        <div class="card" id="card8"  onclick="clickCard(8)"></div>
+        <div class="card" id="card9"  onclick="clickCard(9)"></div>
+        <div class="card" id="card10" onclick="clickCard(10)"></div>
+        <div class="card" id="card11" onclick="clickCard(11)"></div>
+        <div class="card" id="card12" onclick="clickCard(12)"></div>
+
+        <div class="card" id="pile0"></div>
+        <div class="card" id="pile1"></div>
+        <div class="card" id="pile2"></div>
+        <div class="card" id="pile3"></div>
+        <div class="card" id="pile4"></div>
+    </div>
 </div>
+
+<script src="/clientjs/{BLACKOUT_ID}"></script>
+
 </body>
 </html>

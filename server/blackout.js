@@ -285,6 +285,7 @@ Game.prototype.startBid = function(params)
         {
             player.hand.push(deck.cards.shift());
         }
+        player.hand.sort(function(a,b) { return a - b });
     }
 
     this.state = State.BID;
@@ -435,7 +436,28 @@ Game.prototype.play = function(params)
         return 'notYourTurn';
     }
 
-    params.index = Number(params.index);
+    if(params.which)
+    {
+        params.which = Number(params.which);
+        params.index = -1;
+        for(var i = 0; i < currentPlayer.hand.length; i++)
+        {
+            if(currentPlayer.hand[i] == params.which)
+            {
+                params.index = i;
+                break;
+            }
+        }
+
+        if(params.index == -1)
+        {
+            return 'doNotHave';
+        }
+    }
+    else
+    {
+        params.index = Number(params.index);
+    }
 
     if((params.index < 0) || (params.index >= currentPlayer.hand.length))
     {
@@ -590,6 +612,7 @@ exports.newGame = function(params)
 }
 
 exports.State = State;
+exports.OK = OK;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Test helpers

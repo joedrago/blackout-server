@@ -1,5 +1,10 @@
 // ----------------------------------------------------------------------------
 
+var ANIMATE_SPEED = 150;
+var SELECTED_Y    = -100;
+var UNSELECTED_Y  = 0;
+var PILE_OFFSET   = -200;
+
 var context = {
     user: {
         'name': '{BLACKOUT_NAME}'
@@ -12,9 +17,16 @@ var server = {
     'games': []
 };
 
+var socket;
+
 var actionUrl = '/' + context.id + '/blackout/action';
 
-// ---------------------------------------------------------------------------------------------------------------------------
+var selectedCard = -1;
+
+var localHand = [];
+var localPile = [];
+
+// ----------------------------------------------------------------------------
 // Card
 
 var Suit =
@@ -55,395 +67,282 @@ function Card(x)
 }
 
 // ----------------------------------------------------------------------------
-// QueryString Manipulation
+// Event Handlers
 
-function makeQueryString(args)
+function onServerUpdate(serverData)
 {
-    var qs = '';
-    for(var i = 0; i < args.length; i+=2)
+    console.log("onServerUpdate: " + JSON.stringify(serverData));
+    server = serverData;
+
+    // TODO: copy to localHand/localPile in a much more clever way
+    localHand = [];
+    localPile = [];
+
+    if(server.player.game)
     {
-        if(qs.length)
+        var playerInfo;
+        for(var i = 0; i < server.player.game.players.length; i++)
         {
-            qs += '&';
-        }
-        qs += args[i] + '=' + args[i+1];
-    }
-    return '?'+qs;
-}
-
-function parseQueryString(queryString)
-{
-    if (queryString == "") return {};
-
-    var qsArray = queryString.split('&');
-    var queryDict = {};
-    for (var i = 0; i < qsArray.length; ++i)
-    {
-        var p = qsArray[i].split('=');
-        if (p.length != 2) continue;
-        queryDict[p[0]] = decodeURIComponent(p[1].replace(/\+/g, " "));
-    }
-    return queryDict;
-}
-
-// ----------------------------------------------------------------------------
-// Render Helpers
-
-function makeMarkup(entries)
-{
-    var markup = '';
-    var inList = false;
-
-    for ( var i = 0; i < entries.length; i++ )
-    {
-        var e = entries[i];
-
-        if(e.type == 'text')
-        {
-            if(inList)
+            if(server.player.game.players[i].id == context.id)
             {
-                markup += '</ul>';
-                inList = false;
-            }
-
-            markup += "<p>"+e.text+"</p>";
-        }
-        else if((e.type == 'action') || (e.type == 'url'))
-        {
-            if(!inList)
-            {
-                markup += "<ul data-role='listview' data-inset='true'>";
-                inList = true;
-            }
-
-            markup += '<li>';
-            markup += '<a ';
-
-            var url;
-            if(e.type == 'url')
-            {
-                url = e.url;
-                markup += 'rel="external" ';
-            }
-            else
-            {
-                e.args.push('action');
-                e.args.push(e.action);
-                e.args.push('id');
-                e.args.push(server.player.id);
-                if(server.player.game)
-                {
-                    e.args.push('counter');
-                    e.args.push(server.player.game.counter);
-                }
-                var qs = makeQueryString(e.args);
-                url = '#dyn' + qs;
-            }
-
-            markup += 'href="'+url+'">' + e.text + '</a>';
-            markup += '</li>';
-        }
-    }
-
-    if(inList)
-        markup += '</ul>';
-    return markup;
-}
-
-// ----------------------------------------------------------------------------
-// Render Tree Helpers
-
-function addText(entries, text)
-{
-    entries.push({
-        'type': 'text',
-        'text': text
-    });
-}
-
-function addURL(entries, url, text)
-{
-    entries.push({
-        'type': 'url',
-        'url': url,
-        'text': text
-    });
-}
-
-function addAction()
-{
-    var args = Array.prototype.slice.call(arguments);
-    var entries = args.shift();
-    var action = args.shift();
-    var text = args.shift();
-
-    var e = {
-        'type': 'action',
-        'action': action,
-        'text': text,
-        'args': args
-    };
-    entries.push(e);
-}
-
-// ----------------------------------------------------------------------------
-// Renderer
-
-function renderGame()
-{
-    var entries = [];
-    var game = server.player.game;
-    var currentPlayer = game.players[game.turn];
-    var me;
-
-    for(var i = 0; i < game.players.length; i++)
-    {
-        if(game.players[i].id == context.id)
-        {
-            me = game.players[i];
-            break;
-        }
-    }
-
-    addText(entries, "In Game (State:" + game.state + ")");
-
-    if((game.state == 'bid')
-    || (game.state == 'bidsummary')
-    || (game.state == 'trick'))
-    {
-        for(var i = 0; i < me.hand.length; i++)
-        {
-            var card = new Card(me.hand[i]);
-            addText(entries, "Card: " + card.name);
-        }
-    }
-
-    if(game.state == 'trick')
-    {
-        for(var i = 0; i < game.pile.length; i++)
-        {
-            var card = new Card(game.pile[i]);
-            addText(entries, "Pile: " + card.name);
-        }
-    }
-
-    switch(game.state)
-    {
-        case 'preGameSummary':
-        case 'bidSummary':
-        case 'roundSummary':
-        case 'postGameSummary':
-            {
-                if(game.players[0].id == context.id)
-                {
-                    addAction(entries, 'next', 'Next');
-                }
-                else
-                {
-                    addText(entries, 'Waiting for game owner...');
-                }
+                playerInfo = server.player.game.players[i];
                 break;
             }
+        }
 
-        case 'bid':
-            {
-                if(currentPlayer.id == context.id)
-                {
-                    for(var i = 0; i <= currentPlayer.hand.length; i++)
-                    {
-                        addAction(entries, 'bid', 'Bid ' + i, 'bid', i);
-                    }
-                }
-                else
-                {
-                    addText(entries, "Please wait, not your turn");
-                }
-                break;
-            }
-
-        case 'trick':
-            {
-                if(currentPlayer.id == context.id)
-                {
-                    for(var i = 0; i < me.hand.length; i++)
-                    {
-                        var card = new Card(me.hand[i]);
-                        addAction(entries, 'play', 'Play ' + card.name, 'index', i);
-                    }
-                }
-                else
-                {
-                    addText(entries, "Please wait, not your turn");
-                }
-                break;
-            }
-    }
-
-    return entries;
-}
-
-function render()
-{
-    // ------------------------------------------------------------------------
-    // decide what you can do right now
-    var entries = [];
-
-    if(server.player.game && server.player.game.state != 'lobby')
-    {
-        entries = renderGame();
-    }
-    else
-    {
-        // Lobby
-
-        if(server.player.game)
+        if(playerInfo && playerInfo.hand && server.player.game.pile)
         {
-            addText(entries, 'Lobby (Creating Game):');
-            for(var i = 0; i < server.player.game.players.length; i++)
+            localHand = playerInfo.hand;
+            localPile = server.player.game.pile;
+
+            console.log("update hand:"+JSON.stringify(localHand)+" pile:"+JSON.stringify(localPile));
+
+            for(var i = 0; i < 13; i++)
             {
-                var info = server.player.game.players[i];
-                addText(entries, '* User: ' + info.name);
+                positionCard(i, i, PC_NORMAL);
             }
-            if(server.player.game.players[0].id == context.id)
+            for(var i = 0; i < 5; i++)
             {
-                addAction(entries, 'next', 'Start Game');
+                positionCard(i, i, PC_PILE);
             }
-            addAction(entries, 'endGame', 'End Game');
         }
         else
         {
-            addText(entries, 'Lobby:');
-            addAction(entries, 'newGame', 'New Game');
-        }
-
-        for(var i = 0; i < server.games.length; i++)
-        {
-            var game = server.games[i];
-            var ownerInfo = game.owner;
-            addAction(entries, 'joinGame', 'Join Game ('+ownerInfo.name+')', 'game', game.id);
         }
     }
+    setAllArt();
+}
 
-    addText(entries, 'Options');
-    addURL(entries, '/'+context.id+'/user/rename', 'Rename');
+function onServerError(data)
+{
+    console.log("onServerError: " + JSON.stringify(data));
+}
 
-    if(server.player.game && server.player.game.log)
+function sendAction(action, args)
+{
+    if(!server || !server.player)
     {
-        addText(entries, 'Log');
-        for(var i = 0; i < server.player.game.log.length; i++)
-        {
-            addText(entries, ' * ' + server.player.game.log[i]);
-        }
+        console.log("Not sending actions while there is no server data");
+        return;
     }
 
-    // ------------------------------------------------------------------------
-    // update page
-    var page = $('#dyn');
-    var content = page.children(":jqmData(role=content)");
-    var markup = makeMarkup(entries);
-    //console.log('Markup: ' + markup); // chatty
+    var counter = 0;
+    if(server.player.game)
+    {
+        counter = server.player.game.counter;
+    }
 
-    // ------------------------------------------------------------------------
-    // update header
-    var header = page.children(":jqmData(role=header)" ).find('h1');
-    var title = "Blackout: " + context.user.name;
 
-    header.html(title);
-    content.html(markup);
-    page.page();
-    content.find( ":jqmData(role=listview)" ).listview();
-    $.mobile.changePage( page );
+    if(!args)
+    {
+        args = [];
+    }
+    var data = { id: context.id, counter: counter, action: action, args: args };
+    console.log("sending action: " + JSON.stringify(data));
+    socket.emit('action', data);
 }
 
 // ----------------------------------------------------------------------------
-// Event Handler (Server did something)
 
-function onEvent(data)
+function setArt(id, which)
 {
-    //console.log("Event: " + JSON.stringify(data));
-
-    if(data.type == 'update')
+    if(which == -1)
     {
-        server = data;
+        $(id).css('display', 'none');
+    }
+    else
+    {
+        var card = new Card(which);
+        $(id).css('display', 'block');
+        $(id).css('background-position', '-' + String(card.value * 79) + 'px -' + String(card.suit * 123) + 'px');
+    }
+}
+
+function setAllArt()
+{
+    var id;
+
+    for(var i = 0; i < localHand.length; i++)
+    {
+        id = '#card' + String(i);
+        setArt(id, localHand[i]);
     }
 
-    render();
-}
-
-// ----------------------------------------------------------------------------
-// Action Handler (User did something)
-
-function onAction(args)
-{
-    $.ajax(actionUrl, {
-            'type': 'POST',
-            'dataType': 'text',
-            'data': JSON.stringify(args),
-            'success': function(data, textStatus, xhr)
-            {
-                console.log("Reply: " + data);
-            }
-        });
-
-    render();
-}
-
-// ----------------------------------------------------------------------------
-// Icky page change handling stuff
-
-// Listen for any attempts to call changePage().
-$(document).bind("pagebeforechange", function( e, data )
-{
-    if ( typeof data.toPage === "string" )
+    for(var i = localHand.length; i < 13; i++)
     {
-        console.log('toPage: '+data.toPage);
-        if(data.toPage.search(/#/) == -1)
-            return;
+        id = '#card' + String(i);
+        setArt(id, -1);
+    }
 
-        // We are being asked to load a page by URL, but we only
-        // want to handle URLs that request the data for a specific
-        // category.
-        var url = $.mobile.path.parseUrl(data.toPage);
-        var hash = url.hash;
+    for(var i = 0; i < localPile.length; i++)
+    {
+        id = '#pile' + String(i);
+        setArt(id, localPile[i]);
+    }
 
-        if(hash.search(/^#dyn?/) != -1)
+    for(var i = localPile.length; i < 5; i++)
+    {
+        id = '#pile' + String(i);
+        setArt(id, -1);
+    }
+}
+
+var PC_NORMAL   = 0;
+var PC_SELECTED = (1 << 0);
+var PC_ANIMATED = (1 << 1);
+var PC_PILE     = (1 << 2);
+
+function positionCard(index, viewIndex, flags)
+{
+    var id = (flags & PC_PILE) ? '#pile' : '#card';
+    id += String(index);
+
+    var x = viewIndex * 65;
+    var y = UNSELECTED_Y;
+    if(flags & PC_SELECTED)
+    {
+        y = SELECTED_Y;
+    }
+    else
+    {
+        if(flags & PC_PILE)
         {
-            hash = hash.replace(/^#dyn\??/, '');
-            var args = parseQueryString(hash);
-            onAction(args);
-            e.preventDefault();
+            x = index * 65;
+            y = PILE_OFFSET;
         }
     }
-});
+
+    if(flags & PC_ANIMATED)
+    {
+        $(id).animate({ left: String(x) + 'px', top: String(y) + 'px' }, ANIMATE_SPEED);
+    }
+    else
+    {
+        $(id).css('left', String(x) + 'px');
+        $(id).css('top',  String(y) + 'px');
+    }
+}
+
+function moveCard(which, where)
+{
+    if(which == where)
+    {
+        positionCard(which, which, PC_NORMAL);
+        return;
+    }
+
+    var playing = false;
+    if(where == -1)
+    {
+        where = localHand.length - 1;
+        playing = true;
+    }
+
+    var dir = (where < which) ? -1 : 1;
+    var c, lc;
+
+    var t = localHand[which];
+    for(lc = which, c = which+dir; c != where+dir; lc += dir, c += dir)
+    {
+        localHand[lc] = localHand[c];
+    }
+
+    if(playing)
+    {
+        localHand.splice(where, 1);
+    }
+    else
+    {
+        localHand[where] = t;
+    }
+
+    setAllArt();
+
+    for(lc = which, c = which+dir; c != where+dir; lc += dir, c += dir)
+    {
+        positionCard(lc, c, (c == which) ? PC_SELECTED : PC_NORMAL);
+    }
+    positionCard(where, which, PC_SELECTED);
+
+    for(var i = 0; i < localHand.length; i++)
+    {
+        positionCard(i, i, PC_ANIMATED);
+    }
+}
+
+function playCard(which)
+{
+    localPile.push(localHand[which]);
+    positionCard(localPile.length - 1, which, PC_PILE | PC_SELECTED);
+    positionCard(localPile.length - 1, 0, PC_PILE | PC_ANIMATED);
+
+    sendAction('play', { which: localHand[which] });
+}
+
+function onPlayButton()
+{
+    if(selectedCard != -1)
+    {
+        playCard(selectedCard);
+        moveCard(selectedCard, -1);
+        selectedCard = -1;
+    }
+}
+
+function onNextButton()
+{
+    sendAction('next');
+}
+
+function onNewGameButton()
+{
+    sendAction('newGame');
+}
+
+function onJoinGameButton()
+{
+    if(server && server.games.length)
+    {
+        sendAction('joinGame', { id: server.games[0].id });
+    }
+}
+
+function clickCard(which)
+{
+    var id;
+
+    if(selectedCard == which)
+    {
+        id = '#card' + String(selectedCard);
+        $(id).animate({ top: String(UNSELECTED_Y)+'px' }, ANIMATE_SPEED);
+        selectedCard = -1;
+    }
+    else if(selectedCard == -1)
+    {
+        id = '#card' + String(which);
+        $(id).animate({ top: String(SELECTED_Y)+'px' }, ANIMATE_SPEED);
+        selectedCard = which;
+    }
+    else
+    {
+        moveCard(selectedCard, which);
+        selectedCard = -1;
+    }
+}
 
 // ----------------------------------------------------------------------------
 // Startup
 
 function ready()
 {
-    var socket = io.connect('');
+    socket = io.connect('');
     socket.on('connect', function () {
             socket.emit('hello', { id: context.id });
             });
-    socket.on('news', function (data) {
-            console.log(data);
-            socket.emit('my other event', { my: 'data' });
-            });
-
-    // Attach eventsource
-    $.eventsource({
-        label:    'blackoutEvents',
-        url:      '/'+context.id+'/blackout/eventsource',
-        dataType: 'json',
-        message: onEvent,
-        });
-
-    // render once
-    render();
+    socket.on('update', onServerUpdate);
+    socket.on('error', onServerError);
 }
 
 $(document).ready(function() {
     ready();
 });
-
-// --------------------------------------

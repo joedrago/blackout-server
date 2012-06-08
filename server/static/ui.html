@@ -19,6 +19,12 @@
     background-color: #00aa00;
 }
 
+#cards {
+    position: absolute;
+    left: 0px;
+    top: 517px;
+}
+
 @media all and (max-device-width: 960px) and (orientation: landscape)
 {
     /* Droid 4 */
@@ -27,12 +33,10 @@
         width:  960px;
         height: 502px;
     }
-}
 
-#cards {
-    position: absolute;
-    left: 0px;
-    top: 0px;
+    #cards {
+        top: 379px;
+    }
 }
 
 #cards_rel {
@@ -48,6 +52,24 @@
     background: url('cards.png');
 }
 
+#playButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 10px;
+    top: 200px;
+    background-color: #ff0;
+}
+
+#nextButton {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    left: 220px;
+    top: 200px;
+    background-color: #f0f;
+}
+
 #state {
     position: absolute;
     top: 0px;
@@ -59,6 +81,8 @@
 </style>
 <div id="game">
 <div id="state">State</div>
+<div id="playButton" onclick="onPlayButton()">Play Button</div>
+<div id="nextButton" onclick="onNextButton()">Next Button</div>
 <div id="cards">
     <div id="cards_rel">
         <div class="card" id="card0"  onclick="clickCard(0)"></div>
@@ -74,61 +98,172 @@
         <div class="card" id="card10" onclick="clickCard(10)"></div>
         <div class="card" id="card11" onclick="clickCard(11)"></div>
         <div class="card" id="card12" onclick="clickCard(12)"></div>
+
+        <div class="card" id="pile0"></div>
+        <div class="card" id="pile1"></div>
+        <div class="card" id="pile2"></div>
+        <div class="card" id="pile3"></div>
+        <div class="card" id="pile4"></div>
     </div>
-</div>
 </div>
 
 <script>
 
+var ANIMATE_SPEED = 150;
+var SELECTED_Y = -100;
+var UNSELECTED_Y = 0;
+
+var PILE_OFFSET = -200;
+
 var selectedCard = -1;
 
-var hand = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+var hand = [0, 1, 2, 3, 4, 5];
+var pile = [];
+
+function setArt(id, which)
+{
+    if(which == -1)
+    {
+        $(id).css('display', 'none');
+    }
+    else
+    {
+        $(id).css('display', 'block');
+        $(id).css('background-position', '-' + String(which * 79) + 'px 0px');
+    }
+}
 
 function setBackgrounds()
 {
+    var id;
+
     for(var i = 0; i < hand.length; i++)
     {
-        var id = '#card' + String(i);
-        $(id).css('display', 'block');
-        $(id).css('background-position', '-' + String(hand[i] * 79) + 'px 0px');
+        id = '#card' + String(i);
+        setArt(id, hand[i]);
     }
 
     for(var i = hand.length; i < 13; i++)
     {
-        $(id).css('display', 'none');
+        id = '#card' + String(i);
+        setArt(id, -1);
+    }
+
+    for(var i = 0; i < pile.length; i++)
+    {
+        id = '#pile' + String(i);
+        setArt(id, pile[i]);
+    }
+
+    for(var i = pile.length; i < 5; i++)
+    {
+        id = '#pile' + String(i);
+        setArt(id, -1);
     }
 }
 
-function placeCard(handIndex, viewIndex, selected, instant)
-{
-    var id = '#card' + String(handIndex);
-    var x = viewIndex * 65;
-    var y = 0;
-    if(selected)
-        y = 100;
+var PC_NORMAL   = 0;
+var PC_SELECTED = (1 << 0);
+var PC_ANIMATED = (1 << 1);
+var PC_PILE     = (1 << 2);
 
-    if(instant)
+function positionCard(index, viewIndex, flags)
+{
+    var id = (flags & PC_PILE) ? '#pile' : '#card';
+    id += String(index);
+
+    var x = viewIndex * 65;
+    var y = UNSELECTED_Y;
+    if(flags & PC_SELECTED)
+    {
+        y = SELECTED_Y;
+    }
+    else
+    {
+        if(flags & PC_PILE)
+        {
+            x = index * 65;
+            y = PILE_OFFSET;
+        }
+    }
+
+    if(flags & PC_ANIMATED)
+    {
+        $(id).animate({ left: String(x) + 'px', top: String(y) + 'px' }, ANIMATE_SPEED);
+    }
+    else
     {
         $(id).css('left', String(x) + 'px');
         $(id).css('top',  String(y) + 'px');
     }
+}
+
+function moveCard(which, where)
+{
+    if(which == where)
+    {
+        positionCard(which, which, PC_NORMAL);
+        return;
+    }
+
+    var playing = false;
+    if(where == -1)
+    {
+        where = hand.length - 1;
+        playing = true;
+    }
+
+    var dir = (where < which) ? -1 : 1;
+    var c, lc;
+
+    var t = hand[which];
+    for(lc = which, c = which+dir; c != where+dir; lc += dir, c += dir)
+    {
+        hand[lc] = hand[c];
+    }
+
+    if(playing)
+    {
+        hand.splice(where, 1);
+    }
     else
     {
-        $(id).animate({ left: String(x) + 'px', top: String(y) + 'px' }, 200);
+        hand[where] = t;
+    }
+
+    setBackgrounds();
+
+    for(lc = which, c = which+dir; c != where+dir; lc += dir, c += dir)
+    {
+        positionCard(lc, c, (c == which) ? PC_SELECTED : PC_NORMAL);
+    }
+    positionCard(where, which, PC_SELECTED);
+
+    for(var i = 0; i < hand.length; i++)
+    {
+        positionCard(i, i, PC_ANIMATED);
     }
 }
 
-function swapCards(a, b)
+function playCard(which)
 {
-    var t = hand[a];
-    hand[a] = hand[b];
-    hand[b] = t;
-    setBackgrounds();
+    pile.push(hand[which]);
+    positionCard(pile.length - 1, which, PC_PILE | PC_SELECTED);
+    positionCard(pile.length - 1, 0, PC_PILE | PC_ANIMATED);
+}
 
-    placeCard(a, b, false, true);
-    placeCard(b, a, true, true);
-    placeCard(a, a, false, false);
-    placeCard(b, b, false, false);
+function onPlayButton()
+{
+    if(selectedCard != -1)
+    {
+        playCard(selectedCard);
+        moveCard(selectedCard, -1);
+        selectedCard = -1;
+    }
+}
+
+function onNextButton()
+{
 }
 
 function clickCard(which)
@@ -138,18 +273,18 @@ function clickCard(which)
     if(selectedCard == which)
     {
         id = '#card' + String(selectedCard);
-        $(id).animate({ top: '0px' }, 200);
+        $(id).animate({ top: String(UNSELECTED_Y)+'px' }, ANIMATE_SPEED);
         selectedCard = -1;
     }
     else if(selectedCard == -1)
     {
         id = '#card' + String(which);
-        $(id).animate({ top: '100px' }, 200);
+        $(id).animate({ top: String(SELECTED_Y)+'px' }, ANIMATE_SPEED);
         selectedCard = which;
     }
     else
     {
-        swapCards(selectedCard, which);
+        moveCard(selectedCard, which);
         selectedCard = -1;
     }
 }
@@ -157,7 +292,7 @@ function clickCard(which)
 setBackgrounds();
 for(var i = 0; i<13; i++)
 {
-    placeCard(i, i, false, true);
+    positionCard(i, i, PC_NORMAL);
 }
 
 </script>
