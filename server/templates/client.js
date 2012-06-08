@@ -1,9 +1,21 @@
+// TODO List
+// * lowest club starts first trick (endBid)
+// * Display errors (fading in middle?)
+// * Lobby should list all games
+// * Quit button (X in top right corner?)
+// * Finish 'quit' flow
+// * All summary screens need to see scores and bids/tricks (not just the log)
+// * (Re)name player
+// * Less tragic UI layout
+// * Better color choices for buttons
+// * "Flavor" (name calling, detecting 'bleeds the table', etc)
+
 // ----------------------------------------------------------------------------
 
 var ANIMATE_SPEED = 150;
 var SELECTED_Y    = -100;
 var UNSELECTED_Y  = 0;
-var PILE_OFFSET   = -200;
+var PILE_OFFSET   = -300;
 
 var context = {
     user: {
@@ -71,29 +83,57 @@ function Card(x)
 
 function onServerUpdate(serverData)
 {
+    var showNext = false;
+    var showLobby = true;
+    var showPlay = false;
+    var bidCount = -1;
+
     console.log("onServerUpdate: " + JSON.stringify(serverData));
     server = serverData;
 
     // TODO: copy to localHand/localPile in a much more clever way
     localHand = [];
     localPile = [];
+    selectedCard = -1;
 
-    if(server.player.game)
+    var game = server.player.game;
+    if(game)
     {
-        var playerInfo;
-        for(var i = 0; i < server.player.game.players.length; i++)
+        if(game.state != 'lobby')
         {
-            if(server.player.game.players[i].id == context.id)
+            showLobby = false;
+        }
+
+        if((game.players[0].id == server.player.id)
+        && (game.state != 'bid')
+        && (game.state != 'trick'))
+        {
+            console.log("wtf " + game.players[0].id + " == " + server.player.id);
+            showNext = true;
+        }
+
+        var playerInfo;
+        for(var i = 0; i < game.players.length; i++)
+        {
+            if(game.players[i].id == context.id)
             {
-                playerInfo = server.player.game.players[i];
+                playerInfo = game.players[i];
                 break;
             }
         }
 
-        if(playerInfo && playerInfo.hand && server.player.game.pile)
+        if(playerInfo && playerInfo.hand && game.pile)
         {
+            if(game.players[game.turn].id == server.player.id)
+            {
+                if(game.state == 'bid')
+                    bidCount = playerInfo.hand.length;
+                else if(game.state == 'trick')
+                    showPlay = true;
+            }
+
             localHand = playerInfo.hand;
-            localPile = server.player.game.pile;
+            localPile = game.pile;
 
             console.log("update hand:"+JSON.stringify(localHand)+" pile:"+JSON.stringify(localPile));
 
@@ -106,11 +146,44 @@ function onServerUpdate(serverData)
                 positionCard(i, i, PC_PILE);
             }
         }
-        else
+
+        if(game.log)
         {
+            var log = "";
+            for(var i = 0; i < game.log.length; i++)
+            {
+                log += game.log[i] + '<br>';
+            }
+
+            $('#log').html(log);
         }
     }
     setAllArt();
+
+    $('#nextButton').css('display', showNext ? 'block' : 'none');
+    $('#playButton').css('display', showPlay ? 'block' : 'none');
+
+    var lobbyState = showLobby ? 'block' : 'none';
+    $('#newGameButton').css('display', lobbyState);
+    $('#joinGameButton').css('display', lobbyState);
+
+    var cols = 5;
+    var step = ($(window).width()-100) / (cols);
+    for(var i = 0; i <= bidCount; i++)
+    {
+        var x = 50 + (step * (i % cols));
+        var y = 150 + (70 * Math.floor(i / cols));
+
+        var id = '#bid' + String(i);
+        $(id).css('left', String(x) + 'px');
+        $(id).css('top',  String(y) + 'px');
+        $(id).css('display', 'inline');
+    }
+    for(var i = bidCount+1; i <= 13; i++)
+    {
+        var id = '#bid' + String(i);
+        $(id).css('display', 'none');
+    }
 }
 
 function onServerError(data)
@@ -197,7 +270,7 @@ function positionCard(index, viewIndex, flags)
     var id = (flags & PC_PILE) ? '#pile' : '#card';
     id += String(index);
 
-    var x = viewIndex * 65;
+    var x = viewIndex * 66;
     var y = UNSELECTED_Y;
     if(flags & PC_SELECTED)
     {
@@ -207,7 +280,7 @@ function positionCard(index, viewIndex, flags)
     {
         if(flags & PC_PILE)
         {
-            x = index * 65;
+            x = index * 85;
             y = PILE_OFFSET;
         }
     }
@@ -276,7 +349,7 @@ function playCard(which)
     positionCard(localPile.length - 1, which, PC_PILE | PC_SELECTED);
     positionCard(localPile.length - 1, 0, PC_PILE | PC_ANIMATED);
 
-    sendAction('play', { which: localHand[which] });
+    sendAction('play', { id:context.id, which: localHand[which] });
 }
 
 function onPlayButton()
@@ -287,6 +360,14 @@ function onPlayButton()
         moveCard(selectedCard, -1);
         selectedCard = -1;
     }
+}
+
+function onBid(x)
+{
+    sendAction('bid', {
+        'id': context.id,
+        'bid':x
+        });
 }
 
 function onNextButton()

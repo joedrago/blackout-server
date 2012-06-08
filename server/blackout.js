@@ -1,5 +1,5 @@
 var MIN_PLAYERS = 3;
-var MAX_LOG_LINES = 5;
+var MAX_LOG_LINES = 8;
 var OK = 'OK';
 var State =
 {
@@ -255,7 +255,7 @@ Game.prototype.reset = function(params)
     this.counter = 0;
     this.rounds = [3, 3];
     this.nextRound = 0;
-    this.dealer = 0; // TODO: choose random player?
+    this.dealer = Math.floor(Math.random() * this.players.length);
     this.log = [];
     this.trumpBroken = false;
     this.output('Game reset. (' + this.players.length + ' players, ' + this.rounds.length + ' rounds)');
@@ -329,6 +329,26 @@ Game.prototype.endTrick = function()
     else
     {
         this.output('Round ends [' + this.nextRound + '/' + this.rounds.length + ']');
+
+        for(var i = 0; i < this.players.length; i++)
+        {
+            var player = this.players[i];
+            var overUnder = player.bid - player.tricks;
+            if(overUnder < 0)
+                overUnder *= -1;
+
+            var penaltyPoints = 0;
+            var step = 1;
+            while(overUnder > 0)
+            {
+                penaltyPoints += step++; // dat quadratic
+                overUnder--;
+            }
+
+            player.score += penaltyPoints;
+
+            this.output(player.name + ' goes ' + player.tricks + '/' + player.bid + '; gains ' + penaltyPoints + ' [' + player.score + ']');
+        }
 
         // TODO: Penalty points here (with logging)
 

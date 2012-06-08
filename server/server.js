@@ -192,11 +192,26 @@ function onAction(data)
                 break;
             }
 
+        case 'bid':
+            {
+                if(game)
+                {
+                    sendError(conn, game.bid(data.args));
+                    updateGame(game);
+                }
+                else
+                {
+                    console.log("Ignoring next from " + data.id);
+                }
+
+                break;
+            }
+
         case 'newGame':
             {
                 if(player.game)
                 {
-                    player.game.endGame();
+                    player.game.quit();
                     updateGame(player.game);
                 }
 
@@ -226,6 +241,14 @@ function onAction(data)
                 var game = sGames[gameid];
                 if(game)
                 {
+                    for(var i = 0; i < game.players.length; i++)
+                    {
+                        if(game.players[i].id == player.id)
+                        {
+                            sendError(conn, 'alreadyJoined');
+                            return;
+                        }
+                    }
                     game.players.push({ id: player.id, name: player.name });
                     player.game = game;
                     updateLobby();
