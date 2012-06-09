@@ -11,6 +11,10 @@ var fileServer = new(nodeStatic.Server)('./static');
 var blackout = require('./blackout.js');
 
 // ----------------------------------------------------------------------------
+// Constants
+
+var MAX_PLAYER_AGE_SEC = 60 * 60; // an hour is plenty
+// ----------------------------------------------------------------------------
 
 var sPlayers = {};
 var sGames = {};
@@ -85,11 +89,20 @@ function sendError(conn, error)
     return true;
 }
 
+function getNow()
+{
+    var d = new Date();
+    var now = Math.floor(d.getTime() / 1000);
+    return now;
+}
+
 function updateConnection(conn)
 {
     var player = sPlayers[conn.id];
     if(!player)
         return;
+
+    player.lastVisit = getNow();
 
     var update = { player: player, games:[] };
 
@@ -143,6 +156,17 @@ function updateGame(game)
 // ----------------------------------------------------------------------------
 // Actions
 
+function quitGame(player)
+{
+    if(player.game)
+    {
+        player.game.quit();
+        player.game = 0;
+        updateGame(player.game);
+    }
+    updateLobby();
+}
+
 // ----------------------------------------------------------------------------
 // Socket Manipulation
 
@@ -162,6 +186,19 @@ function onAction(data)
 
     switch(data.action)
     {
+        case 'rename':
+            {
+                player.name = data.args.name;
+                if(game)
+                {
+                    game.rename(player.id, data.args.name);
+                    updateGame(game);
+                }
+                updateLobby();
+
+                break;
+            }
+
         case 'next':
             {
                 if(game)
@@ -221,7 +258,7 @@ function onAction(data)
                 }
                 while(sGames.hasOwnProperty(id));
 
-                player.game = blackout.newGame({ id: id, players: [ { id: player.id, name: player.name } ] });
+                player.game = blackout.newGame({ id: id, rounds: data.args.rounds, players: [ { id: player.id, name: player.name } ] });
                 sGames[player.game.id] = player.game;
                 updateLobby();
 
@@ -249,7 +286,7 @@ function onAction(data)
                             return;
                         }
                     }
-                    game.players.push({ id: player.id, name: player.name });
+                    game.addPlayer({ id: player.id, name: player.name });
                     player.game = game;
                     updateLobby();
                 }
@@ -258,6 +295,12 @@ function onAction(data)
                     sendError(conn, 'gameDoesNotExist');
                 }
 
+                break;
+            }
+
+        case 'quitGame':
+            {
+                quitGame(player);
                 break;
             }
     };
@@ -331,7 +374,8 @@ function onHttpRequest(req, res)
             player = {
                 'id': id,
                 'name': 'Anonymous',
-                'game': 0
+                'game': 0,
+                'lastVisit': getNow()
             };
             sPlayers[id] = player;
 
@@ -353,6 +397,57 @@ function onHttpRequest(req, res)
         fileServer.serve(req, res);
     }
 }
+
+// ----------------------------------------------------------------------------
+// Cleanup tick
+
+function cleanupTick()
+{
+    var now = getNow();
+
+    for(var k in sPlayers)
+    {
+        if(sPlayers.hasOwnProperty(k))
+        {
+            var player = sPlayers[k];
+            var age = now - player.lastVisit;
+
+            if(age > MAX_PLAYER_AGE_SEC)
+            {
+                console.log("Throwing out dead player: " + player.id);
+
+                quitGame(player);
+                delete sPlayers[k];
+            }
+        }
+    }
+
+    // Cleanup dead games
+    for(var k in sGames)
+    {
+        var keep = false;
+        if(sGames.hasOwnProperty(k))
+        {
+            var game = sGames[k];
+            for(var i = 0; i < game.players.length; i++)
+            {
+                var player = sPlayers[game.players[i].id];
+                if(player && player.game && (player.game.id == game.id))
+                {
+                    keep = true;
+                }
+            }
+
+            if(!keep)
+            {
+                console.log("Cleaning up abandoned game " + k);
+                delete sGames[k];
+            }
+        }
+    }
+}
+
+setInterval(cleanupTick, 10 * 1000);
 
 // ----------------------------------------------------------------------------
 

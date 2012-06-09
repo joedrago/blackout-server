@@ -10,6 +10,27 @@
 <body>
 <style>
 
+#splash {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 100%;
+    height: 100%;
+
+    display: table-cell;
+    vertical-align: middle;
+
+    background-color: #333333;
+
+    z-index: 5;
+}
+
+#splashimg {
+    width: 100%;
+    height: 100%;
+    background: url('/logo.png') center center no-repeat;
+}
+
 .button {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
@@ -39,6 +60,8 @@
     padding:6px 24px;
     text-decoration:none;
     text-shadow:3px 3px 0px #528ecc;
+    text-align: center;
+
 }.button:hover {
     background:-webkit-gradient( linear, left top, left bottom, color-stop(0.05, #378de5), color-stop(1, #79bbff) );
     background:-moz-linear-gradient( center top, #378de5 5%, #79bbff 100% );
@@ -62,6 +85,8 @@
     height: 640px;
 
     background-color: #333333;
+
+    z-index: -2;
 }
 
 #cards {
@@ -86,25 +111,72 @@
 #playButton {
     position: absolute;
     left: 10px;
-    top: 367px;
+    top: 447px;
+}
+
+#nextButtonBox {
+    position: absolute;
+    width: 100%;
+    bottom: 150px;
+
+    z-index: 4;
 }
 
 #nextButton {
-    position: absolute;
-    left: 0px;
-    top: 0px;
+    width: 25%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#waitText {
+    text-align: center;
+    width: 50%;
+    margin-left: auto;
+    margin-right: auto;
+
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+
+    color: #777;
 }
 
 #newGameButton {
     position: absolute;
-    left: 0px;
-    top: 150px;
+    left: 350px;
+    top: 250px;
+
+    z-index: 4;
 }
 
-#joinGameButton {
+#joinGameList {
     position: absolute;
-    left: 0px;
-    top: 200px;
+    left: 300px;
+    top: 350px;
+
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+}
+
+#newGameList {
+    position: absolute;
+    left: 300px;
+    top: 300px;
+
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+}
+
+#bidList {
+    position: absolute;
+    left: 300px;
+    top: 350px;
+
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
 }
 
 #log {
@@ -118,6 +190,106 @@
     font-size: 20px;
     font-family: monospace;
     font-weight: 900;
+
+    z-index: -1;
+
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+#errors {
+    position: absolute;
+    top: 200px;
+    width: 100%;
+    text-align: center;
+
+    color: #ff0000;
+    font-size: 20px;
+    font-family: monospace;
+    opacity: 0;
+
+    z-index: 6;
+}
+
+#scoreboard {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+}
+
+#scoreboard table {
+    border: 1px solid #fff;
+    border-collapse: collapse;
+}
+
+#scoreboard table td {
+    color: #fff;
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+
+    border: 1px solid #fff;
+}
+
+#scoreboard table td {
+    color: #fff;
+    padding: 3px;
+}
+
+#summaryOuter {
+    position: absolute;
+    left: 0px;
+    top: 10%;
+    width: 100%;
+    height: 80%;
+
+    display: table-cell;
+    vertical-align: middle;
+}
+
+#summaryInner {
+    border: 1px solid #fff;
+    margin-left: auto;
+    margin-right: auto;
+    width: 80%;
+    height: 100%;
+
+    background-color: #222222;
+}
+
+#summary table {
+    margin-left: auto;
+    margin-right: auto;
+    width: 60%;
+    border-collapse: collapse;
+}
+
+#summary table th {
+
+    color: #fff;
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+    text-align: center;
+}
+
+#summary table td {
+
+border: 1px solid #fff;
+
+    color: #fff;
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+}
+
+#summary table td {
+    color: #fff;
+    padding: 3px;
 }
 
 @media all and (max-device-width: 960px) and (orientation: landscape)
@@ -134,32 +306,53 @@
     }
 
     #playButton {
-        top: 229px;
+        top: 309px;
     }
-}
+
+    #newGameList {
+        top: 200px;
+    }
+
+    #bidList {
+        top: 250px;
+    }
 
 </style>
 <div id="game">
-<div id="log">--</div>
-<a id="playButton" class="button" onclick="onPlayButton()">Play Card</a>
-<a id="nextButton" class="button"onclick="onNextButton()">Continue</a>
-<a id="newGameButton" class="button"onclick="onNewGameButton()">New Game</a>
-<a id="joinGameButton" class="button"onclick="onJoinGameButton()">Join Game</a>
+<div id="splash"><div id="splashimg"></div></div>
 
-<a id="bid0"  class="button bidButton" onclick="onBid(0)">Bid 0</a>
-<a id="bid1"  class="button bidButton" onclick="onBid(1)">Bid 1</a>
-<a id="bid2"  class="button bidButton" onclick="onBid(2)">Bid 2</a>
-<a id="bid3"  class="button bidButton" onclick="onBid(3)">Bid 3</a>
-<a id="bid4"  class="button bidButton" onclick="onBid(4)">Bid 4</a>
-<a id="bid5"  class="button bidButton" onclick="onBid(5)">Bid 5</a>
-<a id="bid6"  class="button bidButton" onclick="onBid(6)">Bid 6</a>
-<a id="bid7"  class="button bidButton" onclick="onBid(7)">Bid 7</a>
-<a id="bid8"  class="button bidButton" onclick="onBid(8)">Bid 8</a>
-<a id="bid9"  class="button bidButton" onclick="onBid(9)">Bid 9</a>
-<a id="bid10" class="button bidButton" onclick="onBid(10)">Bid 10</a>
-<a id="bid11" class="button bidButton" onclick="onBid(11)">Bid 11</a>
-<a id="bid12" class="button bidButton" onclick="onBid(12)">Bid 12</a>
-<a id="bid13" class="button bidButton" onclick="onBid(13)">Bid 13</a>
+<div id="scoreboard" onclick="onRename()">
+<!--
+<table>
+<tr><td>Name</td><td>Bids</td><td>Tricks</td><td>Score</td></tr>
+<tr><td>Joe</td><td>3</td><td>3</td><td>3</td></tr>
+</table>
+-->
+</div>
+
+<div id="log" onclick="onQuit()">--</div>
+<a style="display:none" id="renameButton" class="button" onclick="onRename()">Rename</a>
+<a id="playButton" class="button" onclick="onPlayButton()">Play Card</a>
+<div id="nextButtonBox">
+<a id="nextButton" class="button" onclick="onNextButton()">Continue</a>
+<div id="waitText">Waiting for game owner...</div>
+</div>
+
+<!--<a id="newGameButton" class="button" onclick="onNewGameButton()">New Game</a>-->
+<select id="newGameList">
+<option selected value="none">New Game</option>
+<option value="2|2">2 x2</option>
+<option value="13|13|13|13">13 x4</option>
+<option value="13|13|13|13|13|13|13|13">13 x8</option>
+<option value="5|5">[5,5]</option>
+</select>
+
+<select id="joinGameList">
+<option selected value="">Please Wait...</option>
+</select>
+<select id="bidList">
+<option selected value="none">Bid:</option>
+</select>
 
 <div id="cards">
     <div id="cards_rel">
@@ -183,6 +376,23 @@
         <div class="card" id="pile3"></div>
         <div class="card" id="pile4"></div>
     </div>
+</div>
+
+<div id="errors" >Error text is right here</div>
+
+<div id="summaryOuter">
+<div id="summaryInner">
+<div id="summary">
+<table>
+<tr><td colspan="4">Game Summary</td></tr>
+<tr><td colspan="4">&nbsp;</td></tr>
+<tr><td>Name</td><td>Bids</td><td>Tricks</td><td>Score</td></tr>
+<tr><td>Joe</td><td>3</td><td>3</td><td>3</td></tr>
+</table>
+</div>
+</div>
+</div>
+
 </div>
 
 <script src="/clientjs/{BLACKOUT_ID}"></script>

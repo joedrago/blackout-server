@@ -1,6 +1,4 @@
 // TODO List
-// * lowest club starts first trick (endBid)
-// * Display errors (fading in middle?)
 // * Lobby should list all games
 // * Quit button (X in top right corner?)
 // * Finish 'quit' flow
@@ -13,9 +11,9 @@
 // ----------------------------------------------------------------------------
 
 var ANIMATE_SPEED = 150;
-var SELECTED_Y    = -100;
+var SELECTED_Y    = -20;
 var UNSELECTED_Y  = 0;
-var PILE_OFFSET   = -300;
+var PILE_OFFSET   = -200;
 
 var context = {
     user: {
@@ -79,6 +77,16 @@ function Card(x)
 }
 
 // ----------------------------------------------------------------------------
+// Helpers
+
+function tableTitle(title, cols)
+{
+    var t = '<tr><th colspan="'+cols+'">'+title+'</th></tr>\n';
+    t += '<tr><th colspan="'+cols+'">&nbsp;</th></tr>\n';
+    return t;
+}
+
+// ----------------------------------------------------------------------------
 // Event Handlers
 
 function onServerUpdate(serverData)
@@ -96,20 +104,105 @@ function onServerUpdate(serverData)
     localPile = [];
     selectedCard = -1;
 
+    var scoreboard = '';
+    var summary = '';
+    var isOwner = false;
+
     var game = server.player.game;
     if(game)
     {
-        if(game.state != 'lobby')
+        showLobby = false;
+
+        if((game.state != 'bid')
+        && (game.state != 'trick'))
         {
-            showLobby = false;
+            showNext = true;
         }
 
-        if((game.players[0].id == server.player.id)
+        if(game.players[0].id == server.player.id)
+        {
+            isOwner = true;
+        }
+
+        // Summary preparation
+        if((game.state != 'lobby')
         && (game.state != 'bid')
         && (game.state != 'trick'))
         {
-            console.log("wtf " + game.players[0].id + " == " + server.player.id);
-            showNext = true;
+            summary = '<table>';
+
+            switch(game.state)
+            {
+                case 'bidSummary':
+                {
+                    var totalBids = 0;
+                    summary += tableTitle("Bid Summary: Round " + game.nextRound + ' of ' + game.rounds.length , 2);
+                    summary += '<tr><th>Name</th><th>Bid</th></tr>';
+                    for(var i = 0; i < game.players.length; i++)
+                    {
+                        var player = game.players[i];
+                        summary += '<tr><td>'+player.name+'</td><td>'+player.bid+'</td></tr>';
+                        totalBids += player.bid;
+                    }
+                    var totalTricks = game.players[0].hand.length;
+                    var total = String(totalBids) + ' / ' + String(totalTricks) + ' ';
+                    total += (totalBids > totalTricks) ? "(over)" : "(under)";
+                    summary += '<tr><td>Total:</td><td>'+total+'</td></tr>';
+
+                    break;
+                }
+
+                case 'roundSummary':
+                {
+                    summary += tableTitle("Summary: Round " + game.nextRound + ' of ' + game.rounds.length, 4);
+                    summary += '<tr><th>Name</th><th>Went</th><th>Penalty</th><th>Score</th></tr>';
+                    for(var i = 0; i < game.players.length; i++)
+                    {
+                        var player = game.players[i];
+                        summary += '<tr><td>'+player.name+'</td><td>'+player.lastWent+'</td><td>'+player.lastPoints+'</td><td>'+player.score+'</td></tr>';
+                    }
+
+                    break;
+                }
+
+                case 'postGameSummary':
+                {
+                    var lowestScore = game.players[0].score;
+                    var lowestPlayer = 0;
+                    var tie = false;
+
+                    summary += tableTitle('Game Over!', 4);
+                    summary += '<tr><th>Name</th><th>Went</th><th>Penalty</th><th>Final Score</th></tr>';
+                    for(var i = 0; i < game.players.length; i++)
+                    {
+                        var player = game.players[i];
+                        if(player.score < lowestScore)
+                        {
+                            lowestScore = player.score;
+                            lowestPlayer = i;
+                            tie = false;
+                        }
+                        else if((i != lowestPlayer) && (player.score == lowestScore))
+                        {
+                            tie = true;
+                        }
+                        summary += '<tr><td>'+player.name+'</td><td>'+player.lastWent+'</td><td>'+player.lastPoints+'</td><td>'+player.score+'</td></tr>';
+                    }
+
+                    summary += '<tr><th colspan="4">&nbsp;</th></tr>\n';
+                    if(tie)
+                    {
+                        summary += '<tr><th colspan="4">Its a tie!</th></tr>\n';
+                    }
+                    else
+                    {
+                        summary += '<tr><th colspan="4">'+game.players[lowestPlayer].name+' Wins!</th></tr>\n';
+                    }
+                    break;
+                }
+            };
+
+            summary += '</table>';
         }
 
         var playerInfo;
@@ -157,16 +250,82 @@ function onServerUpdate(serverData)
 
             $('#log').html(log);
         }
+
+        scoreboard += "<table>";
+        scoreboard += '<tr><td>Name</td><td>Bids</td><td>Tricks</td><td>Score</td></tr>';
+        for(var i = 0; i < game.players.length; i++)
+        {
+            var p = game.players[i];
+            var bid = p.bid;
+            if((typeof bid === undefined) || bid == -1)
+            {
+                bid = '--';
+            }
+            scoreboard += '<tr><td>'+p.name+'</td><td>'+bid+'</td><td>'+p.tricks+'</td><td>'+p.score+'</td></tr>';
+        }
+        scoreboard += "</table>";
     }
     setAllArt();
 
-    $('#nextButton').css('display', showNext ? 'block' : 'none');
+    $('#scoreboard').html(scoreboard);
+
+    if(isOwner)
+    {
+        $('#nextButton').css('display', showNext ? 'block' : 'none');
+        $('#waitText').css('display', 'none');
+    }
+    else
+    {
+        $('#waitText').css('display', showNext ? 'block' : 'none');
+        $('#nextButton').css('display', 'none');
+    }
+
     $('#playButton').css('display', showPlay ? 'block' : 'none');
 
-    var lobbyState = showLobby ? 'block' : 'none';
-    $('#newGameButton').css('display', lobbyState);
-    $('#joinGameButton').css('display', lobbyState);
+    if(showLobby)
+    {
+        $('#joinGameList option').each(function() {
+            $(this).remove();
+        });
 
+        $('#joinGameList').append('<option selected value="">Join Game (' + server.games.length + ' game(s) available)</option>');
+
+        for(var i = 0; i < server.games.length; i++)
+        {
+            var game = server.games[i];
+            $('#joinGameList').append('<option value="'+game.id+'">Game: '+game.players[0].name+', '+game.players.length+' player(s)</option>');
+        }
+    }
+
+    var lobbyState = showLobby ? 'block' : 'none';
+    $('#newGameList').css('display', lobbyState);
+    $('#joinGameList').css('display', lobbyState);
+
+    if(showLobby)
+    {
+        $('#newGameList').val('none');
+    }
+
+    if(bidCount >= 0)
+    {
+        $('#bidList option').each(function() {
+            $(this).remove();
+        });
+
+        $('#bidList').append('<option selected value="none">Select Bid</option>');
+
+        for(var i = 0; i <= bidCount; i++)
+        {
+            $('#bidList').append('<option value="'+i+'">Bid '+i+'</option>');
+        }
+
+        $('#bidList').css('display', 'block');
+    }
+    else
+    {
+        $('#bidList').css('display', 'none');
+    }
+/*
     var cols = 5;
     var step = ($(window).width()-100) / (cols);
     for(var i = 0; i <= bidCount; i++)
@@ -184,11 +343,42 @@ function onServerUpdate(serverData)
         var id = '#bid' + String(i);
         $(id).css('display', 'none');
     }
+    */
+
+    if(server.player.name === 'Anonymous')
+    {
+        onRename();
+    }
+
+    $('#splash').css('display', 'none');
+
+    if(summary)
+    {
+        $('#summary').html(summary);
+        $('#summaryOuter').css('display', 'block');
+    }
+    else
+    {
+        $('#summaryOuter').css('display', 'none');
+    }
 }
 
 function onServerError(data)
 {
     console.log("onServerError: " + JSON.stringify(data));
+
+    if(data.error)
+    {
+        $('#errors').html(data.error);
+        $('#errors').css('opacity', 1);
+        $('#errors').animate(
+        {
+            'opacity': 0
+        },
+        {
+            duration: 3000, queue: false
+        });
+    }
 }
 
 function sendAction(action, args)
@@ -375,17 +565,42 @@ function onNextButton()
     sendAction('next');
 }
 
-function onNewGameButton()
+function onRename()
 {
-    sendAction('newGame');
+    var newName = prompt("Rename", server.player.name);
+    if(!newName)
+        return;
+
+    sendAction('rename', {
+        name: newName
+    });
 }
 
-function onJoinGameButton()
+function onNewGame(rounds)
 {
-    if(server && server.games.length)
+    sendAction('newGame', {
+        rounds: rounds
+    });
+}
+
+function onJoinGame(id)
+{
+    sendAction('joinGame', { id: id });
+}
+
+function onQuit()
+{
+    if(!server || !server.player.game)
+        return;
+
+    if((server.player.game.state != 'lobby') && (server.player.game.state != 'postGameSummary'))
     {
-        sendAction('joinGame', { id: server.games[0].id });
+        if(!confirm("Quitting the game will end it for everyone. Are you sure?"))
+            return;
     }
+
+    sendAction('quitGame');
+    $('#log').html('');
 }
 
 function clickCard(which)
@@ -410,6 +625,42 @@ function clickCard(which)
         selectedCard = -1;
     }
 }
+
+$('#joinGameList').change(function() {
+    var chosen = false;
+    $('#joinGameList option:selected').each(function() {
+        chosen = $(this).val();
+    });
+
+    if(chosen)
+    {
+        onJoinGame(chosen);
+    }
+});
+
+$('#bidList').change(function() {
+    var chosen = false;
+    $('#bidList option:selected').each(function() {
+        chosen = $(this).val();
+    });
+
+    if(chosen != 'none')
+    {
+        onBid(chosen);
+    }
+});
+
+$('#newGameList').change(function() {
+    var chosen = false;
+    $('#newGameList option:selected').each(function() {
+        chosen = $(this).val();
+    });
+
+    if(chosen != 'none')
+    {
+        onNewGame(chosen);
+    }
+});
 
 // ----------------------------------------------------------------------------
 // Startup

@@ -5,8 +5,6 @@ var State =
 {
     LOBBY: 'lobby',
 
-    PREGAMESUMMARY: 'preGameSummary',
-
     BID: 'bid',
     BIDSUMMARY: 'bidSummary',
     TRICK: 'trick',
@@ -136,6 +134,14 @@ function Game(params)
         this.state = State.LOBBY;
         this.players = params.players;
         this.counter = 0;
+        this.log = [];
+        this.rounds = params.rounds.split("|");
+
+        this.players[0].bid = 0;
+        this.players[0].tricks = 0;
+        this.players[0].score = 0;
+
+        this.output(this.players[0].name + ' creates game');
     }
 }
 
@@ -169,6 +175,16 @@ Game.prototype.currentSuit = function()
 
     var card = new Card(this.pile[0]);
     return card.suit;
+}
+
+Game.prototype.rename = function(id, name)
+{
+    var player = this.findPlayer(id);
+    if(player)
+    {
+        this.output(player.name + ' renamed to ' + name);
+        player.name = name;
+    }
 }
 
 Game.prototype.playerHasSuit = function(player, suit)
@@ -251,14 +267,13 @@ Game.prototype.reset = function(params)
         player.score = 0;
         player.hand = [];
     }
-    this.state = State.PREGAMESUMMARY;
     this.counter = 0;
-    this.rounds = [3, 3];
     this.nextRound = 0;
     this.dealer = Math.floor(Math.random() * this.players.length);
-    this.log = [];
     this.trumpBroken = false;
     this.output('Game reset. (' + this.players.length + ' players, ' + this.rounds.length + ' rounds)');
+
+    this.startBid();
 
     return OK;
 }
@@ -300,7 +315,20 @@ Game.prototype.startBid = function(params)
 
 Game.prototype.endBid = function()
 {
-    this.turn = this.playerAfter(this.dealer); // TODO: should be lowest club/card
+    var lowestPlayer = 0;
+    var lowestCard = this.players[0].hand[0]; // hand is sorted, therefore hand[0] is the lowest
+    for(var i = 1; i < this.players.length; i++)
+    {
+        var player = this.players[i];
+        if(player.hand[0] < lowestCard)
+        {
+            lowestPlayer = i;
+            lowestCard = player.hand[0];
+        }
+    }
+
+    this.lowestRequired = true; // Next player is obligated to throw the lowest card
+    this.turn = lowestPlayer;
     this.state = State.BIDSUMMARY;
 }
 
@@ -347,7 +375,8 @@ Game.prototype.endTrick = function()
 
             player.score += penaltyPoints;
 
-            this.output(player.name + ' goes ' + player.tricks + '/' + player.bid + '; gains ' + penaltyPoints + ' [' + player.score + ']');
+            player.lastWent = String(player.tricks) + '/' + String(player.bid);
+            player.lastPoints = penaltyPoints;
         }
 
         // TODO: Penalty points here (with logging)
@@ -368,6 +397,8 @@ Game.prototype.endTrick = function()
 
 Game.prototype.quit = function(params)
 {
+    this.state = State.POSTGAMESUMMARY;
+    this.output('Someone quit; Game over');
 }
 
 Game.prototype.next = function(params)
@@ -377,10 +408,6 @@ Game.prototype.next = function(params)
         case State.LOBBY:
             {
                 return this.reset(params);
-            }
-        case State.PREGAMESUMMARY:
-            {
-                return this.startBid();
             }
         case State.BIDSUMMARY:
             {
@@ -440,7 +467,23 @@ Game.prototype.bid = function(params)
     this.bids += currentPlayer.bid;
     this.output(currentPlayer.name + " bids " + currentPlayer.bid);
 
+    if(this.state != State.BID)
+    {
+        // Bidding ended
+
+        this.output('Bidding ends ' + this.bids + '/' + this.tricks + '; ' + this.players[this.turn].name + ' throws first');
+    }
+
     return OK;
+}
+
+Game.prototype.addPlayer = function(player)
+{
+    player.bid = 0;
+    player.tricks = 0;
+    player.score = 0;
+    this.players.push(player);
+    this.output(player.name + " joins game (" + this.players.length + ")");
 }
 
 Game.prototype.play = function(params)
@@ -456,7 +499,7 @@ Game.prototype.play = function(params)
         return 'notYourTurn';
     }
 
-    if(params.which)
+    if(typeof params.which !== undefined)
     {
         params.which = Number(params.which);
         params.index = -1;
@@ -482,6 +525,11 @@ Game.prototype.play = function(params)
     if((params.index < 0) || (params.index >= currentPlayer.hand.length))
     {
         return 'indexOutOfRange';
+    }
+
+    if(this.lowestRequired && (params.index != 0))
+    {
+        return 'lowestCardRequired';
     }
 
     var chosenCardX = currentPlayer.hand[params.index];
@@ -540,6 +588,8 @@ Game.prototype.play = function(params)
 
     // If you get here, you can throw whatever you want, and it
     // will either put you in the lead, trump, or dump.
+
+    this.lowestRequired = false;
 
     // Throw the card on the pile, advance the turn
     this.pile.push(currentPlayer.hand[params.index]);
