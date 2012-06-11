@@ -740,6 +740,56 @@ exports.OK = OK;
 // ---------------------------------------------------------------------------------------------------------------------------
 // AI
 
+Game.prototype.bestBid = function(currentPlayer)
+{
+    var bid = 0;
+    for(var i = 0; i < currentPlayer.hand.length; i++)
+    {
+        var card = new Card(currentPlayer.hand[i]);
+        if(card.suit == Suit.SPADES)
+        {
+            bid++;
+            continue;
+        }
+        if(card.value == 12) // Ace
+        {
+            bid++;
+            continue;
+        }
+    }
+    return bid;
+}
+
+Game.prototype.aiBid = function(currentPlayer, i)
+{
+    var reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'bid', 'bid':i});
+    if(reply == OK)
+    {
+        console.log("AI: " + currentPlayer.name + " bids " + String(i));
+        return true;
+    }
+    return false;
+}
+
+Game.prototype.aiPlay = function(currentPlayer, i)
+{
+    var reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'play', 'index':i});
+    if(reply == OK)
+    {
+        var card = new Card(currentPlayer.hand[i]);
+        console.log("AI: " + currentPlayer.name + " plays " + card.name);
+        return true;
+    }
+    else
+    {
+        if(reply == 'dealerFucked')
+        {
+            this.output(currentPlayer.name + ' says "I hate being the dealer."');
+        }
+    }
+    return false;
+}
+
 Game.prototype.aiTick = function()
 {
     if((this.state != State.BID)
@@ -750,37 +800,31 @@ Game.prototype.aiTick = function()
     if(!currentPlayer.ai)
         return false;
 
-    // TODO: Actually think about the AI a bit
+    // TODO: Actually think about the AI a bit more
 
-    var reply;
+    var bestBid = this.bestBid(currentPlayer);
+
+    if(this.aiBid(currentPlayer, bestBid))
+        return true;
+    if(this.aiBid(currentPlayer, bestBid-1))
+        return true;
+    if(this.aiBid(currentPlayer, bestBid+1))
+        return true;
+    if(this.aiBid(currentPlayer, bestBid-2))
+        return true;
+    if(this.aiBid(currentPlayer, bestBid+2))
+        return true;
 
     for(var i = 0; i <= currentPlayer.hand.length; i++)
     {
-        reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'bid', 'bid':i});
-        if(reply == OK)
-        {
-            console.log("AI: " + currentPlayer.name + " bids " + String(i));
+        if(this.aiBid(currentPlayer, i))
             return true;
-        }
-        else
-        {
-            // console.log('AI FAIL BID ['+i+']: ' + reply);
-        }
     }
 
     for(var i = 0; i < currentPlayer.hand.length; i++)
     {
-        reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'play', 'index':i});
-        if(reply == OK)
-        {
-            var card = new Card(currentPlayer.hand[i]);
-            console.log("AI: " + currentPlayer.name + " plays " + card.name);
+        if(this.aiPlay(currentPlayer, i))
             return true;
-        }
-        else
-        {
-            // console.log('AI FAIL PLAY ['+i+']: ' + reply);
-        }
     }
 
     return false;

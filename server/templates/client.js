@@ -258,16 +258,21 @@ function onServerUpdate(serverData)
         }
 
         scoreboard += "<table>";
-        scoreboard += '<tr><td>Name</td><td>Bids</td><td>Tricks</td><td>Score</td></tr>';
+        scoreboard += '<tr><td>Name</td><td>Tricks</td><td>Bids</td><td>Score</td></tr>';
         for(var i = 0; i < game.players.length; i++)
         {
             var p = game.players[i];
             var bid = p.bid;
+            var tricks = p.tricks;
             if((typeof bid === undefined) || bid == -1)
             {
                 bid = '--';
             }
-            scoreboard += '<tr><td>'+p.name+'</td><td>'+bid+'</td><td>'+p.tricks+'</td><td>'+p.score+'</td></tr>';
+            if(game.state == 'bid')
+            {
+                tricks = '--';
+            }
+            scoreboard += '<tr><td>'+p.name+'</td><td>'+tricks+'</td><td>'+bid+'</td><td>'+p.score+'</td></tr>';
         }
         scoreboard += "</table>";
     }
