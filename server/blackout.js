@@ -821,7 +821,13 @@ Game.prototype.aiTick = function()
             return true;
     }
 
-    for(var i = 0; i < currentPlayer.hand.length; i++)
+    var startingPoint = Math.floor(Math.random() * currentPlayer.hand.length);
+    for(var i = startingPoint; i < currentPlayer.hand.length; i++)
+    {
+        if(this.aiPlay(currentPlayer, i))
+            return true;
+    }
+    for(var i = 0; i < startingPoint; i++)
     {
         if(this.aiPlay(currentPlayer, i))
             return true;
