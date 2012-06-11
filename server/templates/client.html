@@ -128,6 +128,20 @@
     margin-right: auto;
 }
 
+#aiButtonBox {
+    position: absolute;
+    width: 100%;
+    bottom: 50px;
+
+    z-index: 4;
+}
+
+#aiButton {
+    width: 25%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 #waitText {
     text-align: center;
     width: 50%;
@@ -336,6 +350,9 @@ border: 1px solid #fff;
 <div id="nextButtonBox">
 <a id="nextButton" class="button" onclick="onNextButton()">Continue</a>
 <div id="waitText">Waiting for game owner...</div>
+</div>
+<div id="aiButtonBox">
+<a id="aiButton" class="button" style="display:block" onclick="onAIButton()">Add AI</a>
 </div>
 
 <!--<a id="newGameButton" class="button" onclick="onNewGameButton()">New Game</a>-->

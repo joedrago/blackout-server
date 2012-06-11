@@ -107,6 +107,7 @@ function onServerUpdate(serverData)
     var scoreboard = '';
     var summary = '';
     var isOwner = false;
+    var lobbyState = false;
 
     var game = server.player.game;
     if(game)
@@ -122,6 +123,11 @@ function onServerUpdate(serverData)
         if(game.players[0].id == server.player.id)
         {
             isOwner = true;
+        }
+
+        if(game.state == 'lobby')
+        {
+            lobbyState = true;
         }
 
         // Summary preparation
@@ -273,11 +279,13 @@ function onServerUpdate(serverData)
     {
         $('#nextButton').css('display', showNext ? 'block' : 'none');
         $('#waitText').css('display', 'none');
+        $('#aiButton').css('display', lobbyState ? 'block' : 'none');
     }
     else
     {
         $('#waitText').css('display', showNext ? 'block' : 'none');
         $('#nextButton').css('display', 'none');
+        $('#aiButton').css('display', 'none');
     }
 
     $('#playButton').css('display', showPlay ? 'block' : 'none');
@@ -563,6 +571,11 @@ function onBid(x)
 function onNextButton()
 {
     sendAction('next');
+}
+
+function onAIButton()
+{
+    sendAction('addAI');
 }
 
 function onRename()

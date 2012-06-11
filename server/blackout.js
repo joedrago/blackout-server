@@ -26,6 +26,22 @@ var SuitName = ['Clubs', 'Diamonds', 'Hearts', 'Spades'];
 var ShortSuitName = ['C', 'D', 'H', 'S'];
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// AI Name Generator
+
+var aiNames = [
+    "Mario",
+    "Luigi",
+    "Toad",
+    "Peach"
+];
+
+function randomName()
+{
+    var r = Math.floor(Math.random() * aiNames.length);
+    return aiNames[r];
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // Card
 
 function Card(x)
@@ -482,8 +498,45 @@ Game.prototype.addPlayer = function(player)
     player.bid = 0;
     player.tricks = 0;
     player.score = 0;
+    if(!player.ai)
+    {
+        player.ai = false;
+    }
     this.players.push(player);
     this.output(player.name + " joins game (" + this.players.length + ")");
+}
+
+Game.prototype.namePresent = function(name)
+{
+    for(var i = 0; i < this.players.length; i++)
+    {
+        if(this.players[i].name === name)
+            return true;
+    }
+    return false;
+}
+
+Game.prototype.addAI = function()
+{
+    if(this.players.length > 4)
+    {
+        return 'tooManyPlayers';
+    }
+
+    do
+    {
+    var name = randomName();
+    } while(this.namePresent(name));
+
+    var ai = {
+        name: name,
+        id: 'ai' + String(this.players.length),
+        ai: true
+    };
+    this.addPlayer(ai);
+
+    console.log("added AI player");
+    return OK;
 }
 
 Game.prototype.play = function(params)
@@ -499,7 +552,7 @@ Game.prototype.play = function(params)
         return 'notYourTurn';
     }
 
-    if(typeof params.which !== undefined)
+    if(params.hasOwnProperty('which'))
     {
         params.which = Number(params.which);
         params.index = -1;
@@ -639,6 +692,55 @@ Game.prototype.play = function(params)
         this.turn = this.playerAfter(this.turn);
     }
     return OK;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// AI
+
+Game.prototype.aiTick = function()
+{
+    if((this.state != State.BID)
+    && (this.state != State.TRICK))
+        return false;
+
+    var currentPlayer = this.currentPlayer();
+    if(!currentPlayer.ai)
+        return false;
+
+    // TODO: Actually think about the AI a bit
+
+    var reply;
+
+    for(var i = 0; i <= currentPlayer.hand.length; i++)
+    {
+        reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'bid', 'bid':i});
+        if(reply == OK)
+        {
+            console.log("AI: " + currentPlayer.name + " bids " + String(i));
+            return true;
+        }
+        else
+        {
+            // console.log('AI FAIL BID ['+i+']: ' + reply);
+        }
+    }
+
+    for(var i = 0; i < currentPlayer.hand.length; i++)
+    {
+        reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'play', 'index':i});
+        if(reply == OK)
+        {
+            var card = new Card(currentPlayer.hand[i]);
+            console.log("AI: " + currentPlayer.name + " plays " + card.name);
+            return true;
+        }
+        else
+        {
+            // console.log('AI FAIL PLAY ['+i+']: ' + reply);
+        }
+    }
+
+    return false;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

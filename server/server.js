@@ -303,6 +303,28 @@ function onAction(data)
                 quitGame(player);
                 break;
             }
+
+        case 'addAI':
+            {
+                if(player.game)
+                {
+                    if(player.game.state == blackout.State.LOBBY)
+                    {
+                        sendError(conn, player.game.addAI());
+                        updateLobby();
+                    }
+                    else
+                    {
+                        return 'notInLobby';
+                    }
+                }
+                else
+                {
+                    return 'notInGame';
+                }
+
+                break;
+            }
     };
 }
 
@@ -447,7 +469,27 @@ function cleanupTick()
     }
 }
 
-setInterval(cleanupTick, 10 * 1000);
+setInterval(cleanupTick, 60 * 1000);
+
+// ----------------------------------------------------------------------------
+// AI Tick
+
+function aiTick()
+{
+    for(var k in sGames)
+    {
+        if(sGames.hasOwnProperty(k))
+        {
+            var game = sGames[k];
+            if(game.aiTick())
+            {
+                updateGame(game);
+            }
+        }
+    }
+}
+
+setInterval(aiTick, 4000);
 
 // ----------------------------------------------------------------------------
 
