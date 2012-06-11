@@ -695,6 +695,49 @@ Game.prototype.play = function(params)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// Action dispatch
+
+Game.prototype.action = function(params)
+{
+    if((params.action != 'quit')                                // the only action everyone can do
+    && (this.state != State.BID) && (this.state != State.TRICK) // the only states where non-owners get a say in things
+    && (params.id != this.findOwner().id)                       // test to see if you're the owner
+    )
+    {
+        return 'ownerOnly';
+    }
+
+    if(!this[params.action])
+    {
+        return 'unknownAction';
+    }
+
+    if(this.counter != params.counter)
+    {
+        return 'staleCounter';
+    }
+
+    var reply = this[params.action](params);
+    if(reply == OK)
+    {
+        this.counter++;
+    }
+    return reply;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Exports
+
+exports.newGame = function(params)
+{
+    var game = new Game(params);
+    return game;
+}
+
+exports.State = State;
+exports.OK = OK;
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // AI
 
 Game.prototype.aiTick = function()
@@ -742,102 +785,3 @@ Game.prototype.aiTick = function()
 
     return false;
 }
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// Action dispatch
-
-Game.prototype.action = function(params)
-{
-    if((params.action != 'quit')                                // the only action everyone can do
-    && (this.state != State.BID) && (this.state != State.TRICK) // the only states where non-owners get a say in things
-    && (params.id != this.findOwner().id)                       // test to see if you're the owner
-    )
-    {
-        return 'ownerOnly';
-    }
-
-    if(!this[params.action])
-    {
-        return 'unknownAction';
-    }
-
-    if(this.counter != params.counter)
-    {
-        return 'staleCounter';
-    }
-
-    var reply = this[params.action](params);
-    if(reply == OK)
-    {
-        this.counter++;
-    }
-    return reply;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// Exports
-
-exports.newGame = function(params)
-{
-    var game = new Game(params);
-    return game;
-}
-
-exports.State = State;
-exports.OK = OK;
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// Test helpers
-
-function perform(game, expl, action)
-{
-    console.log('------------------------------------------------------------');
-    console.log('Action: ' + expl + '\n        => ' + JSON.stringify(action));
-    var reply = game.action(action);
-    console.log('Reply : ' + reply);
-    console.log('State : ' + JSON.stringify(game, null, '  '));
-    return reply;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// Test code
-
-/*
-
-var params =
-{
-    'id': '555',
-    'players': [
-        {'id':'j', 'name': 'joe'}
-    ]
-};
-var game = new Game(params);
-game.players.push({'id':'c', 'name': 'chris'});
-game.players.push({'id':'d', 'name': 'dave'});
-
-perform(game, "next", {'counter':game.counter, 'id':'j', 'action': 'next'}); // start game
-
-for(var rounds = 0; rounds < 10; rounds++)
-{
-    perform(game, "next", {'counter':game.counter, 'id':'j', 'action': 'next'}); // start bid
-
-    perform(game, "bid", {'counter':game.counter, 'id':'c', 'action': 'bid', 'bid':1});
-    perform(game, "bid", {'counter':game.counter, 'id':'d', 'action': 'bid', 'bid':1});
-    perform(game, "bid", {'counter':game.counter, 'id':'j', 'action': 'bid', 'bid':0});
-
-    perform(game, "next", {'counter':game.counter, 'id':'j', 'action': 'next'}); // start trick
-
-    for(var i = 0; i < 3; i++)
-        if(OK == perform(game, "play", {'counter':game.counter, 'id':'c', 'action': 'play', 'index':i}))
-            break;
-
-    for(var i = 0; i < 3; i++)
-        if(OK == perform(game, "play", {'counter':game.counter, 'id':'d', 'action': 'play', 'index':i}))
-            break;
-
-    for(var i = 0; i < 3; i++)
-        if(OK == perform(game, "play", {'counter':game.counter, 'id':'j', 'action': 'play', 'index':i}))
-            break;
-}
-
-*/
