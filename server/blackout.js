@@ -285,7 +285,6 @@ Game.prototype.reset = function(params)
     }
     this.counter = 0;
     this.nextRound = 0;
-    this.dealer = Math.floor(Math.random() * this.players.length);
     this.trumpBroken = false;
     this.output('Game reset. (' + this.players.length + ' players, ' + this.rounds.length + ' rounds)');
 
@@ -318,6 +317,8 @@ Game.prototype.startBid = function(params)
         }
         player.hand.sort(function(a,b) { return a - b });
     }
+
+    this.dealer = Math.floor(Math.random() * this.players.length);
 
     this.state = State.BID;
     this.turn = this.playerAfter(this.dealer);
