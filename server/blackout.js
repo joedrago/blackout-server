@@ -841,7 +841,7 @@ function highestValueNonSpadeIndex(hand, avoidSuit)
 
 function highestValueIndexInSuitLowerThan(hand, winningCard)
 {
-    for(var i = hand.length - 1; i >= 0; i++)
+    for(var i = hand.length - 1; i >= 0; i--)
     {
         card = new Card(hand[i]);
         if((card.suit == winningCard.suit)
