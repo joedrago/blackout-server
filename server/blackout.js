@@ -887,19 +887,32 @@ Game.prototype.bestBid = function(currentPlayer)
     //var crp = Math.floor((cr * 100) / 52);
 
     var bid = 0;
+    var partialSpades = 0;
+    var partialFaces = 0; // non spade face cards
     for(var i = 0; i < currentPlayer.hand.length; i++)
     {
         var card = new Card(currentPlayer.hand[i]);
 
         if(card.suit == Suit.SPADES)
         {
-            if(cr > 45) // Almost all cards in play
+            if(cr > 40) // Almost all cards in play
             {
                 if(card.value >= 6) // 8S or higher
                 {
                     bid++;
                     this.aiLogBid(i, '8S or bigger');
                     continue;
+                }
+                else
+                {
+                    partialSpades++;
+                    if(partialSpades > 1)
+                    {
+                        bid++;
+                        this.aiLogBid(i, 'a couple of low spades');
+                        partialSpades = 0;
+                        continue;
+                    }
                 }
             }
             else
@@ -909,37 +922,50 @@ Game.prototype.bestBid = function(currentPlayer)
                 continue;
             }
         }
-
-        if(handSize >= 6)
+        else
         {
-            // * The Ace of clubs is a winner unless you also have a low club
-            var clubValues = valuesOfSuit(currentPlayer.hand, Suit.CLUBS);
-            if(clubValues.length) // has clubs
+            if((card.value >= 9) && (card.value <= 11)) // JQK of non spade
             {
-                if(clubValues[clubValues.length - 1] == 12) // has AC
+                partialFaces++;
+                if(partialFaces > 2)
                 {
-                    if(clubValues[0] > 3) // 2C - 4C not in hand
-                    {
-                        bid++;
-                        this.aiLogBid(i, 'AC with no low clubs');
-                        continue;
-                    }
+                    partialFaces = 0;
+                    this.aiLogBid(i, 'a couple JQK non-spades');
+                    continue;
                 }
             }
         }
 
-        if(cr > 45)
+        if(cr > 40)
         {
-            // * Aces are probably winners
-            if((card.value == 12) // Ace
+            // * Aces and Kings are probably winners
+            if((card.value >= 11) // Ace or King
             && (card.suit != Suit.CLUBS)) // Not a club
             {
                 bid++;
-                this.aiLogBid(i, 'non-club ace');
+                this.aiLogBid(i, 'non-club ace or king');
                 continue;
             }
         }
     }
+
+    if(handSize >= 6)
+    {
+        // * The Ace of clubs is a winner unless you also have a low club
+        var clubValues = valuesOfSuit(currentPlayer.hand, Suit.CLUBS);
+        if(clubValues.length) // has clubs
+        {
+            if(clubValues[clubValues.length - 1] == 12) // has AC
+            {
+                if(clubValues[0] > 0) // 2C not in hand
+                {
+                    bid++;
+                    this.aiLogBid(0, 'AC with no 2C');
+                }
+            }
+        }
+    }
+
     return bid;
 }
 
@@ -1012,7 +1038,7 @@ Game.prototype.aiLog = function(text)
     if(!currentPlayer.ai)
         return false;
 
-    console.log('AI['+currentPlayer.name+']: hand:'+stringifyCards(currentPlayer.hand)+' pile:'+stringifyCards(this.pile)+' '+text);
+    console.log('AI['+currentPlayer.name+'; '+currentPlayer.tricks+'/'+currentPlayer.bid+']: hand:'+stringifyCards(currentPlayer.hand)+' pile:'+stringifyCards(this.pile)+' '+text);
 }
 
 Game.prototype.aiTick = function()
@@ -1063,11 +1089,16 @@ Game.prototype.aiTick = function()
     {
         var tricksNeeded = currentPlayer.bid - currentPlayer.tricks;
         var wantToWin = (tricksNeeded > 0);
-        this.aiLog('wantToWin: '+JSON.stringify(wantToWin));
-
         var bestPlay = -1;
         var currentSuit = this.currentSuit();
         var winningIndex = this.bestInPile();
+
+        if(this.pile.length == this.players.length)
+        {
+            currentSuit = Suit.NONE;
+            winningIndex = -1;
+        }
+
         var winningCard = false;
         if(winningIndex != -1)
         {
@@ -1085,8 +1116,8 @@ Game.prototype.aiTick = function()
                 if(bestPlay == -1)
                 {
                     // Only spades left! Time to bleed the table.
-                    bestPlay = currentPlayer.hand.length - 1;
-                    this.aiLogPlay(bestPlay, 'highest spade (trying to win; bleeding the table)');
+                    bestPlay = 0;
+                    this.aiLogPlay(bestPlay, 'lowest spade (trying to win; bleeding the table for a future win)');
                 }
             }
             else
@@ -1103,7 +1134,7 @@ Game.prototype.aiTick = function()
                     else
                     {
                         bestPlay = lowestIndexInSuit(currentPlayer.hand, winningCard.suit);
-                        this.aiLogPlay(bestPlay, 'lowest in suit (trying to lose; forced in suit)');
+                        this.aiLogPlay(bestPlay, 'lowest in suit (trying to win; forced in suit, cant win)');
                         if(bestPlay != -1)
                             return this.aiPlayLow(currentPlayer, bestPlay);
                     }
@@ -1122,7 +1153,7 @@ Game.prototype.aiTick = function()
                     else
                     {
                         // No more spades left and none of this suit. Dump your lowest card.
-                        bestPlay = lowestValueIndex(hand, Suit.NONE);
+                        bestPlay = lowestValueIndex(currentPlayer.hand, Suit.NONE);
                         this.aiLogPlay(bestPlay, 'dump (trying to win, throwing lowest)');
                     }
                 }
@@ -1166,7 +1197,7 @@ Game.prototype.aiTick = function()
                     {
                         // Current winner is trumping the suit. Throw your highest spade lower than the winner
                         bestPlay = highestValueIndexInSuitLowerThan(currentPlayer.hand, winningCard);
-                        this.aiLogPlay(bestPlay, 'trying to lose; lowest dumpable spade');
+                        this.aiLogPlay(bestPlay, 'trying to lose; highest dumpable spade');
                     }
                 }
 
@@ -1174,21 +1205,20 @@ Game.prototype.aiTick = function()
                 {
                     // Try to dump your highest non-spade
                     bestPlay = highestValueNonSpadeIndex(currentPlayer.hand, winningCard.suit);
-                    this.aiLogPlay(bestPlay, 'trying to lose; lowest dumpable non-spade');
+                    this.aiLogPlay(bestPlay, 'trying to lose; highest dumpable non-spade');
                 }
             }
         }
 
         if(bestPlay != -1)
         {
-            var reply = this.aiPlay(currentPlayer, bestPlay);
-            if(reply == OK)
+            if(this.aiPlay(currentPlayer, bestPlay))
             {
                 return true;
             }
             else
             {
-                this.aiLog('not allowed to play my best play: ' + reply);
+                this.aiLog('not allowed to play my best play');
             }
         }
 
