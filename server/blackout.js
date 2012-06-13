@@ -152,6 +152,12 @@ function Game(params)
         this.counter = 0;
         this.log = [];
         this.rounds = params.rounds.split("|");
+        this.maxPlayers = 5;
+        for(var i = 0; i < this.rounds.length; i++)
+        {
+            if(this.rounds[i] > 10)
+                this.maxPlayers = 4;
+        }
 
         this.players[0].bid = 0;
         this.players[0].tricks = 0;
@@ -519,7 +525,7 @@ Game.prototype.namePresent = function(name)
 
 Game.prototype.addAI = function()
 {
-    if(this.players.length > 4)
+    if(this.players.length >= this.maxPlayers)
     {
         return 'tooManyPlayers';
     }

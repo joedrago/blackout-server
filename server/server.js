@@ -278,6 +278,12 @@ function onAction(data)
                 var game = sGames[gameid];
                 if(game)
                 {
+                    if(game.players.length >= game.maxPlayers)
+                    {
+                        sendError(conn, 'tooManyPlayers');
+                        return;
+                    }
+
                     for(var i = 0; i < game.players.length; i++)
                     {
                         if(game.players[i].id == player.id)
