@@ -501,6 +501,7 @@ setInterval(aiTick, 1000);
 
 var server = http.createServer(onHttpRequest);
 var io = socketIO.listen(server);
+io.set('log level', 1);
 
 server.listen(8124);
 

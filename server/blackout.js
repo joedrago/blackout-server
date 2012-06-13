@@ -6,7 +6,6 @@ var State =
     LOBBY: 'lobby',
 
     BID: 'bid',
-    BIDSUMMARY: 'bidSummary',
     TRICK: 'trick',
     ROUNDSUMMARY: 'roundSummary',
 
@@ -352,7 +351,7 @@ Game.prototype.endBid = function()
 
     this.lowestRequired = true; // Next player is obligated to throw the lowest card
     this.turn = lowestPlayer;
-    this.state = State.BIDSUMMARY;
+    this.startTrick({});
 }
 
 Game.prototype.startTrick = function(params)
@@ -745,23 +744,200 @@ exports.State = State;
 exports.OK = OK;
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// AI card helpers
+
+function valuesOfSuit(hand, suit)
+{
+    var values = [];
+    for(var i = 0; i < hand.length; i++)
+    {
+        var card = new Card(hand[i]);
+        if(card.suit == suit)
+        {
+            values.push(card.value);
+        }
+    }
+    return values;
+}
+
+function stringifyCards(cards)
+{
+    var t = '';
+    for(var i = 0; i < cards.length; i++)
+    {
+        var card = new Card(cards[i]);
+        if(t)
+            t += ',';
+        t += card.name;
+    }
+
+    return '['+t+']';
+}
+
+function lowestIndexInSuit(hand, suit)
+{
+    for(var i = 0; i < hand.length; i++)
+    {
+        var card = new Card(hand[i]);
+        if(card.suit == suit)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function highestIndexInSuit(hand, suit)
+{
+    for(var i = hand.length - 1; i >= 0; i--)
+    {
+        var card = new Card(hand[i]);
+        if(card.suit == suit)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function lowestValueIndex(hand, avoidSuit) // use Suit.NONE to return any suit
+{
+    var card = new Card(hand[0]);
+    var lowestIndex = 0;
+    var lowestValue = card.value;
+    for(var i = 1; i < hand.length; i++)
+    {
+        card = new Card(hand[i]);
+        if(card.suit != avoidSuit)
+        {
+            if(card.value < lowestValue)
+            {
+                lowestValue = card.value;
+                lowestIndex = i;
+            }
+        }
+    }
+    return lowestIndex;
+}
+
+function highestValueNonSpadeIndex(hand, avoidSuit)
+{
+    var highestIndex = -1;
+    var highestValue = -1;
+    for(var i = hand.length - 1; i >= 0; i--)
+    {
+        var card = new Card(hand[i]);
+        if((card.suit != avoidSuit) && (card.suit != Suit.SPADES))
+        {
+            if(card.value > highestValue)
+            {
+                highestValue = card.value;
+                highestIndex = i;
+            }
+        }
+    }
+    return highestIndex;
+}
+
+function highestValueIndexInSuitLowerThan(hand, winningCard)
+{
+    for(var i = hand.length - 1; i >= 0; i++)
+    {
+        card = new Card(hand[i]);
+        if((card.suit == winningCard.suit)
+        && (card.value < winningCard.value))
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // AI
+
+Game.prototype.aiLogBid = function(i, why)
+{
+    var currentPlayer = this.currentPlayer();
+    if(!currentPlayer.ai)
+        return false;
+
+    var card = new Card(currentPlayer.hand[i]);
+    this.aiLog('potential winner: ' + card.name + ' [' + why + ']');
+}
+
+Game.prototype.aiLogPlay = function(i, why)
+{
+    if(i == -1)
+        return;
+
+    var currentPlayer = this.currentPlayer();
+    if(!currentPlayer.ai)
+        return false;
+
+    var card = new Card(currentPlayer.hand[i]);
+    this.aiLog('bestPlay: ' + card.name + ' [' + why + ']');
+}
 
 Game.prototype.bestBid = function(currentPlayer)
 {
+    // Cards Represented (how many out of the deck are in play?)
+    var handSize = currentPlayer.hand.length;
+    var cr = this.players.length * handSize;
+    //var crp = Math.floor((cr * 100) / 52);
+
     var bid = 0;
     for(var i = 0; i < currentPlayer.hand.length; i++)
     {
         var card = new Card(currentPlayer.hand[i]);
+
         if(card.suit == Suit.SPADES)
         {
-            bid++;
-            continue;
+            if(cr > 45) // Almost all cards in play
+            {
+                if(card.value >= 6) // 8S or higher
+                {
+                    bid++;
+                    this.aiLogBid(i, '8S or bigger');
+                    continue;
+                }
+            }
+            else
+            {
+                bid++;
+                this.aiLogBid(i, 'spade');
+                continue;
+            }
         }
-        if(card.value == 12) // Ace
+
+        if(handSize >= 6)
         {
-            bid++;
-            continue;
+            // * The Ace of clubs is a winner unless you also have a low club
+            var clubValues = valuesOfSuit(currentPlayer.hand, Suit.CLUBS);
+            if(clubValues.length) // has clubs
+            {
+                if(clubValues[clubValues.length - 1] == 12) // has AC
+                {
+                    if(clubValues[0] > 3) // 2C - 4C not in hand
+                    {
+                        bid++;
+                        this.aiLogBid(i, 'AC with no low clubs');
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if(cr > 45)
+        {
+            // * Aces are probably winners
+            if((card.value == 12) // Ace
+            && (card.suit != Suit.CLUBS)) // Not a club
+            {
+                bid++;
+                this.aiLogBid(i, 'non-club ace');
+                continue;
+            }
         }
     }
     return bid;
@@ -780,10 +956,10 @@ Game.prototype.aiBid = function(currentPlayer, i)
 
 Game.prototype.aiPlay = function(currentPlayer, i)
 {
+    var card = new Card(currentPlayer.hand[i]);
     var reply = this.action({'counter': this.counter, 'id':currentPlayer.id, 'action': 'play', 'index':i});
     if(reply == OK)
     {
-        var card = new Card(currentPlayer.hand[i]);
         console.log("AI: " + currentPlayer.name + " plays " + card.name);
         return true;
     }
@@ -797,6 +973,48 @@ Game.prototype.aiPlay = function(currentPlayer, i)
     return false;
 }
 
+// Tries to play lowest cards first (moves right)
+Game.prototype.aiPlayLow = function(currentPlayer, startingPoint)
+{
+    for(var i = startingPoint; i < currentPlayer.hand.length; i++)
+    {
+        if(this.aiPlay(currentPlayer, i))
+            return true;
+    }
+    for(var i = 0; i < startingPoint; i++)
+    {
+        if(this.aiPlay(currentPlayer, i))
+            return true;
+    }
+    return false;
+}
+
+// Tries to play highest cards first (moves left)
+Game.prototype.aiPlayHigh = function(currentPlayer, startingPoint)
+{
+    for(var i = startingPoint; i >= 0; i--)
+    {
+        if(this.aiPlay(currentPlayer, i))
+            return true;
+    }
+    for(var i = currentPlayer.hand.length - 1; i > startingPoint; i--)
+    {
+        if(this.aiPlay(currentPlayer, i))
+            return true;
+    }
+    return false;
+}
+
+
+Game.prototype.aiLog = function(text)
+{
+    var currentPlayer = this.currentPlayer();
+    if(!currentPlayer.ai)
+        return false;
+
+    console.log('AI['+currentPlayer.name+']: hand:'+stringifyCards(currentPlayer.hand)+' pile:'+stringifyCards(this.pile)+' '+text);
+}
+
 Game.prototype.aiTick = function()
 {
     if((this.state != State.BID)
@@ -807,37 +1025,176 @@ Game.prototype.aiTick = function()
     if(!currentPlayer.ai)
         return false;
 
-    // TODO: Actually think about the AI a bit more
+    // ------------------------------------------------------------
+    // Bidding
 
-    var bestBid = this.bestBid(currentPlayer);
-
-    if(this.aiBid(currentPlayer, bestBid))
-        return true;
-    if(this.aiBid(currentPlayer, bestBid-1))
-        return true;
-    if(this.aiBid(currentPlayer, bestBid+1))
-        return true;
-    if(this.aiBid(currentPlayer, bestBid-2))
-        return true;
-    if(this.aiBid(currentPlayer, bestBid+2))
-        return true;
-
-    for(var i = 0; i <= currentPlayer.hand.length; i++)
+    if(this.state == State.BID)
     {
-        if(this.aiBid(currentPlayer, i))
+        var bestBid = this.bestBid(currentPlayer);
+
+        // Try to bid as close as you can to the 'best bid'
+        this.aiLog('bestBid:'+String(bestBid));
+        if(this.aiBid(currentPlayer, bestBid))
             return true;
+        if(this.aiBid(currentPlayer, bestBid-1))
+            return true;
+        if(this.aiBid(currentPlayer, bestBid+1))
+            return true;
+        if(this.aiBid(currentPlayer, bestBid-2))
+            return true;
+        if(this.aiBid(currentPlayer, bestBid+2))
+            return true;
+
+        // Give up and bid whatever is allowed
+        for(var i = 0; i <= currentPlayer.hand.length; i++)
+        {
+            if(this.aiBid(currentPlayer, i))
+            {
+                this.aiLog('gave up and bid:'+String(i));
+                return true;
+            }
+        }
     }
 
-    var startingPoint = Math.floor(Math.random() * currentPlayer.hand.length);
-    for(var i = startingPoint; i < currentPlayer.hand.length; i++)
+    // ------------------------------------------------------------
+    // Playing
+
+    if(this.state == State.TRICK)
     {
-        if(this.aiPlay(currentPlayer, i))
-            return true;
-    }
-    for(var i = 0; i < startingPoint; i++)
-    {
-        if(this.aiPlay(currentPlayer, i))
-            return true;
+        var tricksNeeded = currentPlayer.bid - currentPlayer.tricks;
+        var wantToWin = (tricksNeeded > 0);
+        this.aiLog('wantToWin: '+JSON.stringify(wantToWin));
+
+        var bestPlay = -1;
+        var currentSuit = this.currentSuit();
+        var winningIndex = this.bestInPile();
+        var winningCard = false;
+        if(winningIndex != -1)
+        {
+            winningCard = new Card(this.pile[winningIndex]);
+        }
+
+        if(wantToWin)
+        {
+            if(currentSuit == Suit.NONE) // Are you leading?
+            {
+                // Lead with your highest non-spade
+                bestPlay = highestValueNonSpadeIndex(currentPlayer.hand, Suit.NONE);
+                this.aiLogPlay(bestPlay, 'highest non-spade (trying to win)');
+
+                if(bestPlay == -1)
+                {
+                    // Only spades left! Time to bleed the table.
+                    bestPlay = currentPlayer.hand.length - 1;
+                    this.aiLogPlay(bestPlay, 'highest spade (trying to win; bleeding the table)');
+                }
+            }
+            else
+            {
+                if(this.playerHasSuit(currentPlayer, currentSuit)) // Are you stuck with forced play?
+                {
+                    if(this.playerCanWinInSuit(currentPlayer, winningCard)) // Can you win?
+                    {
+                        bestPlay = highestIndexInSuit(currentPlayer.hand, winningCard.suit);
+                        this.aiLogPlay(bestPlay, 'highest in suit (trying to win; forced in suit)');
+                        if(bestPlay != -1)
+                            return this.aiPlayHigh(currentPlayer, bestPlay);
+                    }
+                    else
+                    {
+                        bestPlay = lowestIndexInSuit(currentPlayer.hand, winningCard.suit);
+                        this.aiLogPlay(bestPlay, 'lowest in suit (trying to lose; forced in suit)');
+                        if(bestPlay != -1)
+                            return this.aiPlayLow(currentPlayer, bestPlay);
+                    }
+                }
+
+                if(bestPlay == -1)
+                {
+                    var lastCard = new Card(currentPlayer.hand[currentPlayer.hand.length - 1]);
+                    if(lastCard.suit == Suit.SPADES)
+                    {
+                        // Try to trump, hard
+
+                        bestPlay = currentPlayer.hand.length - 1;
+                        this.aiLogPlay(bestPlay, 'trump (trying to win)');
+                    }
+                    else
+                    {
+                        // No more spades left and none of this suit. Dump your lowest card.
+                        bestPlay = lowestValueIndex(hand, Suit.NONE);
+                        this.aiLogPlay(bestPlay, 'dump (trying to win, throwing lowest)');
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Plan: Try to dump something awesome
+
+            if(currentSuit == Suit.NONE) // Are you leading?
+            {
+                // Lead with your lowest value (try to not throw a spade if you can help it)
+                bestPlay = lowestValueIndex(currentPlayer.hand, Suit.SPADES);
+                this.aiLogPlay(bestPlay, 'lowest value (trying to lose; avoiding spades)');
+            }
+            else
+            {
+                if(this.playerHasSuit(currentPlayer, currentSuit)) // Are you stuck with forced play?
+                {
+                    if(this.playerCanWinInSuit(currentPlayer, winningCard)) // Are you stuck winning?
+                    {
+                        bestPlay = lowestIndexInSuit(currentPlayer.hand, winningCard.suit);
+                        this.aiLogPlay(bestPlay, 'lowest in suit (trying to lose; forced to win)');
+                        if(bestPlay != -1)
+                            return this.aiPlayLow(currentPlayer, bestPlay);
+                    }
+                    else
+                    {
+                        bestPlay = highestIndexInSuit(currentPlayer.hand, winningCard.suit);
+                        this.aiLogPlay(bestPlay, 'highest in suit (trying to lose; forced in suit, but cant win)');
+                        if(bestPlay != -1)
+                            return this.aiPlayHigh(currentPlayer, bestPlay);
+                    }
+                }
+
+                if(bestPlay == -1)
+                {
+                    // Try to dump your highest spade, if you can throw anything
+                    if((currentSuit != Suit.SPADES)
+                    && (winningCard.suit == Suit.SPADES))
+                    {
+                        // Current winner is trumping the suit. Throw your highest spade lower than the winner
+                        bestPlay = highestValueIndexInSuitLowerThan(currentPlayer.hand, winningCard);
+                        this.aiLogPlay(bestPlay, 'trying to lose; lowest dumpable spade');
+                    }
+                }
+
+                if(bestPlay == -1)
+                {
+                    // Try to dump your highest non-spade
+                    bestPlay = highestValueNonSpadeIndex(currentPlayer.hand, winningCard.suit);
+                    this.aiLogPlay(bestPlay, 'trying to lose; lowest dumpable non-spade');
+                }
+            }
+        }
+
+        if(bestPlay != -1)
+        {
+            var reply = this.aiPlay(currentPlayer, bestPlay);
+            if(reply == OK)
+            {
+                return true;
+            }
+            else
+            {
+                this.aiLog('not allowed to play my best play: ' + reply);
+            }
+        }
+
+        this.aiLog('picking random card to play');
+        var startingPoint = Math.floor(Math.random() * currentPlayer.hand.length);
+        return this.aiPlayLow(currentPlayer, startingPoint);
     }
 
     return false;
