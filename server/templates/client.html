@@ -215,6 +215,27 @@
     user-select: none;
 }
 
+#trickTaker {
+    position: absolute;
+    bottom: 170px;
+    left: 750px;
+
+    padding: 5px;
+
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+
+    z-index: -1;
+
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
 #errors {
     position: absolute;
     top: 200px;
@@ -233,6 +254,13 @@
     position: absolute;
     left: 0px;
     top: 0px;
+
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 #scoreboard table {
@@ -240,18 +268,54 @@
     border-collapse: collapse;
 }
 
+#scoreboard table th {
+    color: #ffffff;
+    font-size: 20px;
+    font-family: monospace;
+    font-weight: 900;
+    padding: 3px;
+
+    border: 1px solid #fff;
+
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
 #scoreboard table td {
     color: #fff;
     font-size: 20px;
     font-family: monospace;
     font-weight: 900;
+    padding: 3px;
 
     border: 1px solid #fff;
+
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
-#scoreboard table td {
-    color: #fff;
-    padding: 3px;
+.name {
+    color: #aaffff;
+}
+
+.tricksUnknown {
+    color: #ffffaa;
+}
+
+.tricksGood {
+    color: #aaffaa;
+}
+
+.tricksBad {
+    color: #ffaaaa;
 }
 
 #summaryOuter {
@@ -273,6 +337,7 @@
     height: 100%;
 
     background-color: #222222;
+    opacity: 0.9;
 }
 
 #summary table {
@@ -398,9 +463,16 @@ border: 1px solid #fff;
         <div class="card" id="pile2"></div>
         <div class="card" id="pile3"></div>
         <div class="card" id="pile4"></div>
+
+        <div class="card" id="prev0"></div>
+        <div class="card" id="prev1"></div>
+        <div class="card" id="prev2"></div>
+        <div class="card" id="prev3"></div>
+        <div class="card" id="prev4"></div>
     </div>
 </div>
 
+<div class="name" id="trickTaker">&nbsp;</div>
 <div id="errors" >Error text is right here</div>
 
 <div id="summaryOuter">

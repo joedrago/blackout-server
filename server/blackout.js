@@ -1,5 +1,5 @@
 var MIN_PLAYERS = 3;
-var MAX_LOG_LINES = 8;
+var MAX_LOG_LINES = 7;
 var OK = 'OK';
 var State =
 {
@@ -329,6 +329,8 @@ Game.prototype.startBid = function(params)
     this.turn = this.playerAfter(this.dealer);
     this.bids = 0;
     this.pile = [];
+    this.prev = [];
+    this.lastTrickTaker = -1;
 
     this.output('Round ' + this.nextRound + ' begins; ' + this.players[this.turn].name + ' bids first');
 
@@ -358,6 +360,8 @@ Game.prototype.startTrick = function(params)
 {
     // this.turn should already be correct, either from endBid (lowest club) or endTrick (last trickTaker)
 
+    this.prev = this.pile;
+    this.pile = [];
     this.trickTaker = -1;
     this.state = State.TRICK;
 
@@ -370,6 +374,7 @@ Game.prototype.endTrick = function()
     taker.tricks++;
 
     this.output(taker.name + ' pockets the trick [' + taker.tricks + ']');
+    this.lastTrickTaker = this.trickTaker;
     this.turn = this.trickTaker;
 
     if(this.players[0].hand.length > 0)
@@ -594,20 +599,12 @@ Game.prototype.play = function(params)
     var chosenCardX = currentPlayer.hand[params.index];
     var chosenCard = new Card(chosenCardX);
 
-    var oldPile = this.pile;
-    if(this.trickTaker == -1)
-    {
-        // Lazily clear the pile so people can see it
-        this.pile = [];
-    }
-
     if((!this.trumpBroken)                         // Ensure that trump is broken
     && (this.pile.length == 0)                     // before allowing someone to lead
     && (chosenCard.suit == Suit.SPADES)            // with spades
     && (!this.playerHasOnlySpades(currentPlayer))  // unless it is all they have
     )
     {
-        this.pile = oldPile;
         return 'trumpNotBroken';
     }
 
@@ -620,7 +617,6 @@ Game.prototype.play = function(params)
             // You must throw in-suit if you have one of that suit
             if(chosenCard.suit != forcedSuit)
             {
-                this.pile = oldPile;
                 return 'forcedInSuit';
             }
 
@@ -633,7 +629,6 @@ Game.prototype.play = function(params)
                 && (this.playerCanWinInSuit(currentPlayer, currentWinningCard))
                 )
                 {
-                    this.pile = oldPile;
                     return 'forcedHigherInSuit';
                 }
             }

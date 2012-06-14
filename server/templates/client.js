@@ -10,10 +10,19 @@
 
 // ----------------------------------------------------------------------------
 
-var ANIMATE_SPEED = 150;
+var PLAY_ANIMATE_SPEED = 150;
+var TRICK_ANIMATE_SPEED = 150;
+var TRICK_DISPLAY_MS = 4000;
+var DELAY_MS      = 500;
 var SELECTED_Y    = -20;
 var UNSELECTED_Y  = 0;
-var PILE_OFFSET   = -200;
+var PILE_OFFSET_Y = -200;
+var PREV_OFFSET_X = 750;
+
+var TRICK_FADE_MS = 1000;
+var TRICK_TEXT_FADE_MS = 5000;
+
+var waitingOnAnim = false;
 
 var context = {
     user: {
@@ -33,8 +42,13 @@ var actionUrl = '/' + context.id + '/blackout/action';
 
 var selectedCard = -1;
 
+var lastLocalHand = [];
+
 var localHand = [];
 var localPile = [];
+var localPrev = [];
+
+var trickTakerName = '';
 
 // ----------------------------------------------------------------------------
 // Card
@@ -86,6 +100,68 @@ function tableTitle(title, cols)
     return t;
 }
 
+function arraysHaveSameContent(a, b)
+{
+    if(a.length != b.length)
+        return false;
+
+    var sortedA = a.slice(0);
+    var sortedB = b.slice(0);
+
+    sortedA.sort(function(a,b) { return a - b });
+    sortedB.sort(function(a,b) { return a - b });
+
+    for(var i = 0; i < sortedA.length; i++)
+    {
+        if(sortedA[i] !== sortedB[i])
+            return false;
+    }
+
+    return true;
+}
+
+function carefullyResetHand(orig, rep)
+{
+    var newHand = [];
+
+    var origHas = {};
+    for(var i = 0; i < orig.length; i++)
+        origHas[orig[i]] = 1;
+
+    var repHas = {};
+    for(var i = 0; i < rep.length; i++)
+        repHas[rep[i]] = 1;
+
+    for(var i = 0; i < orig.length; i++)
+        if(repHas.hasOwnProperty(orig[i]))
+            newHand.push(orig[i]);
+    for(var i = 0; i < rep.length; i++)
+        if(!origHas.hasOwnProperty(rep[i]))
+            newHand.push(rep[i]);
+
+    return newHand;
+}
+
+function hideTrickTaker()
+{
+    $('#trickTaker').html('');
+}
+
+function showTrickTaker()
+{
+    $('#trickTaker').html(trickTakerName);
+    $('#trickTaker').css('opacity', 1);
+
+    setTimeout(function() {
+        $('#trickTaker').css('opacity', 0);
+        for(var i = 0; i < 5; i++)
+        {
+            var id = '#prev' + String(i);
+            $(id).css('opacity', 0);
+        }
+    }, TRICK_DISPLAY_MS);
+}
+
 // ----------------------------------------------------------------------------
 // Event Handlers
 
@@ -100,14 +176,15 @@ function onServerUpdate(serverData)
     server = serverData;
 
     // TODO: copy to localHand/localPile in a much more clever way
-    localHand = [];
-    localPile = [];
-    selectedCard = -1;
+    var newHand = [];
+    var newPile = [];
+    var newPrev = [];
 
     var scoreboard = '';
     var summary = '';
     var isOwner = false;
     var lobbyState = false;
+    var trickTaker = '';
 
     var game = server.player.game;
     if(game)
@@ -231,19 +308,9 @@ function onServerUpdate(serverData)
                     showPlay = true;
             }
 
-            localHand = playerInfo.hand;
-            localPile = game.pile;
-
-            console.log("update hand:"+JSON.stringify(localHand)+" pile:"+JSON.stringify(localPile));
-
-            for(var i = 0; i < 13; i++)
-            {
-                positionCard(i, i, PC_NORMAL);
-            }
-            for(var i = 0; i < 5; i++)
-            {
-                positionCard(i, i, PC_PILE);
-            }
+            newHand = playerInfo.hand;
+            newPile = game.pile;
+            newPrev = game.prev;
         }
 
         if(game.log)
@@ -257,13 +324,26 @@ function onServerUpdate(serverData)
             $('#log').html(log);
         }
 
+        if(game.hasOwnProperty('lastTrickTaker') && (game.lastTrickTaker != -1))
+        {
+            trickTaker = game.players[game.lastTrickTaker].name;
+        }
+
         scoreboard += "<table>";
-        scoreboard += '<tr><td>Name</td><td>Tricks</td><td>Bids</td><td>Score</td></tr>';
+        scoreboard += '<tr><th>Name</th><th>Tricks</th><th>Bids</th><th>Score</th></tr>';
         for(var i = 0; i < game.players.length; i++)
         {
             var p = game.players[i];
             var bid = p.bid;
             var tricks = p.tricks;
+            var tricksRemaining = 0;
+            var tricksClass = '';
+
+            if(p.hasOwnProperty('hand'))
+            {
+                tricksRemaining = p.hand.length;
+            }
+
             if((typeof bid === undefined) || bid == -1)
             {
                 bid = '--';
@@ -272,10 +352,82 @@ function onServerUpdate(serverData)
             {
                 tricks = '--';
             }
-            scoreboard += '<tr><td>'+p.name+'</td><td>'+tricks+'</td><td>'+bid+'</td><td>'+p.score+'</td></tr>';
+            else if(p.bid == p.tricks)
+            {
+                tricksClass = 'tricksGood';
+            }
+            else if((p.bid < p.tricks) || (tricksRemaining < (p.bid - p.tricks)))
+            {
+                tricksClass = 'tricksBad';
+            }
+            else
+            {
+                tricksClass = 'tricksUnknown';
+            }
+            scoreboard += '<tr><td><div class="name">'+p.name+'</div></td><td><div class="'+tricksClass+'">'+tricks+'</div></td><td>'+bid+'</td><td>'+p.score+'</td></tr>';
         }
         scoreboard += "</table>";
     }
+
+    trickTakerName = trickTaker;
+
+    if(!arraysHaveSameContent(localPrev, newPrev))
+    {
+        localPrev = newPrev;
+
+        if(localPile.length > newPile.length)
+        {
+            // a trick just finished, animate it!
+            hideTrickTaker();
+            for(var i = 0; i < 13; i++)
+            {
+                positionCard('#prev', i, i, PC_PILE);
+                positionCard('#prev', i, i, PC_PREV | PC_ANIMATED | PC_DELAYED);
+            }
+        }
+        else
+        {
+            showTrickTaker();
+            for(var i = 0; i < 13; i++)
+            {
+                positionCard('#prev', i, i, PC_PREV);
+            }
+        }
+    }
+
+    if(!arraysHaveSameContent(localPile, newPile))
+    {
+        localPile = newPile;
+
+        for(var i = 0; i < 13; i++)
+        {
+            positionCard('#pile', i, i, PC_PILE);
+        }
+    }
+
+    if(!arraysHaveSameContent(localHand, newHand))
+    {
+        console.log("checking lastlocalhand: " + JSON.stringify(lastLocalHand));
+        console.log("against newHand: " + JSON.stringify(newHand));
+
+        if(arraysHaveSameContent(lastLocalHand, newHand)) // You tried to play an illegal move
+        {
+            localHand = lastLocalHand;
+        }
+        else
+        {
+            localHand = carefullyResetHand(localHand, newHand);
+        }
+
+        selectedCard = -1;
+        for(var i = 0; i < 13; i++)
+        {
+            positionCard('#card', i, i, PC_NORMAL);
+        }
+    }
+
+    //console.log("update hand:"+JSON.stringify(localHand)+" pile:"+JSON.stringify(localPile)+" prev:"+JSON.stringify(localPrev));
+
     setAllArt();
 
     $('#scoreboard').html(scoreboard);
@@ -461,17 +613,34 @@ function setAllArt()
         id = '#pile' + String(i);
         setArt(id, -1);
     }
+
+    for(var i = 0; i < localPrev.length; i++)
+    {
+        id = '#prev' + String(i);
+        setArt(id, localPrev[i]);
+    }
+
+    for(var i = localPrev.length; i < 5; i++)
+    {
+        id = '#prev' + String(i);
+        setArt(id, -1);
+    }
+}
+
+function fadePrev()
+{
 }
 
 var PC_NORMAL   = 0;
 var PC_SELECTED = (1 << 0);
 var PC_ANIMATED = (1 << 1);
 var PC_PILE     = (1 << 2);
+var PC_PREV     = (1 << 3);
+var PC_DELAYED  = (1 << 4);
 
-function positionCard(index, viewIndex, flags)
+function positionCard(prefix, index, viewIndex, flags)
 {
-    var id = (flags & PC_PILE) ? '#pile' : '#card';
-    id += String(index);
+    var id = prefix + String(index);
 
     var x = viewIndex * 66;
     var y = UNSELECTED_Y;
@@ -484,13 +653,40 @@ function positionCard(index, viewIndex, flags)
         if(flags & PC_PILE)
         {
             x = index * 85;
-            y = PILE_OFFSET;
+            y = PILE_OFFSET_Y;
         }
+        if(flags & PC_PREV)
+        {
+            x = (index * 15) + PREV_OFFSET_X;
+            y = PILE_OFFSET_Y;
+        }
+    }
+
+    var delay = 0;
+    var queue = false;
+    if(flags & PC_DELAYED)
+    {
+        if(!waitingOnAnim)
+        {
+            waitingOnAnim = true;
+            queue = true;
+        }
+        delay = DELAY_MS;
     }
 
     if(flags & PC_ANIMATED)
     {
-        $(id).animate({ left: String(x) + 'px', top: String(y) + 'px' }, ANIMATE_SPEED);
+        $(id).css('opacity', 1);
+        $(id).delay(delay).animate({ left: String(x) + 'px', top: String(y) + 'px' }, TRICK_ANIMATE_SPEED);
+        if(queue)
+        {
+            $(id).queue(function()
+                    {
+                        waitingOnAnim = false;
+                        showTrickTaker();
+                        $(this).dequeue();
+                    });
+        }
     }
     else
     {
@@ -503,7 +699,7 @@ function moveCard(which, where)
 {
     if(which == where)
     {
-        positionCard(which, which, PC_NORMAL);
+        positionCard('#card', which, which, PC_NORMAL);
         return;
     }
 
@@ -512,6 +708,8 @@ function moveCard(which, where)
     {
         where = localHand.length - 1;
         playing = true;
+        lastLocalHand = localHand.slice(0);
+        console.log("remembering lastlocalhand: " + JSON.stringify(lastLocalHand));
     }
 
     var dir = (where < which) ? -1 : 1;
@@ -536,21 +734,21 @@ function moveCard(which, where)
 
     for(lc = which, c = which+dir; c != where+dir; lc += dir, c += dir)
     {
-        positionCard(lc, c, (c == which) ? PC_SELECTED : PC_NORMAL);
+        positionCard('#card', lc, c, (c == which) ? PC_SELECTED : PC_NORMAL);
     }
-    positionCard(where, which, PC_SELECTED);
+    positionCard('#card', where, which, PC_SELECTED);
 
     for(var i = 0; i < localHand.length; i++)
     {
-        positionCard(i, i, PC_ANIMATED);
+        positionCard('#card', i, i, PC_ANIMATED);
     }
 }
 
 function playCard(which)
 {
     localPile.push(localHand[which]);
-    positionCard(localPile.length - 1, which, PC_PILE | PC_SELECTED);
-    positionCard(localPile.length - 1, 0, PC_PILE | PC_ANIMATED);
+    positionCard('#pile', localPile.length - 1, which, PC_PILE | PC_SELECTED);
+    positionCard('#pile', localPile.length - 1, 0, PC_PILE | PC_ANIMATED);
 
     sendAction('play', { id:context.id, which: localHand[which] });
 }
@@ -628,13 +826,13 @@ function clickCard(which)
     if(selectedCard == which)
     {
         id = '#card' + String(selectedCard);
-        $(id).animate({ top: String(UNSELECTED_Y)+'px' }, ANIMATE_SPEED);
+        $(id).animate({ top: String(UNSELECTED_Y)+'px' }, PLAY_ANIMATE_SPEED);
         selectedCard = -1;
     }
     else if(selectedCard == -1)
     {
         id = '#card' + String(which);
-        $(id).animate({ top: String(SELECTED_Y)+'px' }, ANIMATE_SPEED);
+        $(id).animate({ top: String(SELECTED_Y)+'px' }, PLAY_ANIMATE_SPEED);
         selectedCard = which;
     }
     else
