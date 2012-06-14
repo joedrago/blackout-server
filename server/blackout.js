@@ -364,6 +364,7 @@ Game.prototype.startTrick = function(params)
     this.pile = [];
     this.trickTaker = -1;
     this.state = State.TRICK;
+    this.trumpBroken = false;
 
     return OK;
 }
