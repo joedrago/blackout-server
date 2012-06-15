@@ -353,6 +353,7 @@ Game.prototype.endBid = function()
 
     this.lowestRequired = true; // Next player is obligated to throw the lowest card
     this.turn = lowestPlayer;
+    this.trumpBroken = false;
     this.startTrick({});
 }
 
@@ -364,7 +365,6 @@ Game.prototype.startTrick = function(params)
     this.pile = [];
     this.trickTaker = -1;
     this.state = State.TRICK;
-    this.trumpBroken = false;
 
     return OK;
 }
