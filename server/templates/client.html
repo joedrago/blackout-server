@@ -87,6 +87,8 @@
     background-color: #333333;
 
     z-index: -2;
+
+    overflow: hidden;
 }
 
 #cards {
@@ -285,6 +287,21 @@
     user-select: none;
 }
 
+.yourturntd {
+    background-color: #444;
+}
+
+#yourturn {
+    position: absolute;
+    background: url('/yourturn.png');
+    right: 0px;
+    bottom: -1000px;
+    width: 234px;
+    height: 320px;
+
+    z-index: -1;
+}
+
 #scoreboard table td {
     color: #fff;
     font-size: 20px;
@@ -303,7 +320,7 @@
 }
 
 .name {
-    color: #aaffff;
+    color: #ccffff;
 }
 
 .tricksUnknown {
@@ -399,6 +416,7 @@ border: 1px solid #fff;
 </style>
 <div id="game">
 <div id="splash"><div id="splashimg"></div></div>
+<div id="yourturn"></div>
 
 <div id="scoreboard" onclick="onRename()">
 <!--

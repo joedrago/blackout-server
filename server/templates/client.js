@@ -1,9 +1,5 @@
 // TODO List
-// * Lobby should list all games
 // * Quit button (X in top right corner?)
-// * Finish 'quit' flow
-// * All summary screens need to see scores and bids/tricks (not just the log)
-// * (Re)name player
 // * Less tragic UI layout
 // * Better color choices for buttons
 // * "Flavor" (name calling, detecting 'bleeds the table', etc)
@@ -120,6 +116,8 @@ function arraysHaveSameContent(a, b)
     return true;
 }
 
+// Puts the content of 'replacement' into 'original',
+// while doing its best to preserve orig's order.
 function carefullyResetHand(orig, rep)
 {
     var newHand = [];
@@ -338,6 +336,7 @@ function onServerUpdate(serverData)
             var tricks = p.tricks;
             var tricksRemaining = 0;
             var tricksClass = '';
+            var tdExtras = '';
 
             if(p.hasOwnProperty('hand'))
             {
@@ -364,7 +363,11 @@ function onServerUpdate(serverData)
             {
                 tricksClass = 'tricksUnknown';
             }
-            scoreboard += '<tr><td><div class="name">'+p.name+'</div></td><td><div class="'+tricksClass+'">'+tricks+'</div></td><td>'+bid+'</td><td>'+p.score+'</td></tr>';
+            if(i == game.turn)
+            {
+                tdExtras = ' class="yourturntd"';
+            }
+            scoreboard += '<tr><td'+tdExtras+'><div class="name">'+p.name+'</div></td><td'+tdExtras+'><div class="'+tricksClass+'">'+tricks+'</div></td><td'+tdExtras+'>'+bid+'</td><td'+tdExtras+'>'+p.score+'</td></tr>';
         }
         scoreboard += "</table>";
     }
@@ -393,6 +396,18 @@ function onServerUpdate(serverData)
                 positionCard('#prev', i, i, PC_PREV);
             }
         }
+    }
+
+    $('#yourturn').css('bottom', '-1000px');
+    if(game.players[game.turn].id == server.player.id)
+    {
+        $('#yourturn').animate(
+        {
+            'bottom': '0px'
+        },
+        {
+            duration: 25000, queue: false
+        });
     }
 
     if(!arraysHaveSameContent(localPile, newPile))
