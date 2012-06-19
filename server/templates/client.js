@@ -183,6 +183,7 @@ function onServerUpdate(serverData)
     var isOwner = false;
     var lobbyState = false;
     var trickTaker = '';
+    var yourTurn = false;
 
     var game = server.player.game;
     if(game)
@@ -300,6 +301,8 @@ function onServerUpdate(serverData)
         {
             if(game.players[game.turn].id == server.player.id)
             {
+                yourTurn = true;
+
                 if(game.state == 'bid')
                     bidCount = playerInfo.hand.length;
                 else if(game.state == 'trick')
@@ -399,7 +402,7 @@ function onServerUpdate(serverData)
     }
 
     $('#yourturn').css('bottom', '-1000px');
-    if(game.players[game.turn].id == server.player.id)
+    if(yourTurn)
     {
         $('#yourturn').animate(
         {
