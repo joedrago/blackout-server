@@ -6,6 +6,9 @@
 
 // ----------------------------------------------------------------------------
 
+var HAND_DISTANCE = 66;
+var PILE_DISTANCE = 85;
+var PREV_DISTANCE = 15;
 var PLAY_ANIMATE_SPEED = 150;
 var TRICK_ANIMATE_SPEED = 150;
 var TRICK_DISPLAY_MS = 4000;
@@ -17,6 +20,19 @@ var PREV_OFFSET_X = 750;
 
 var TRICK_FADE_MS = 1000;
 var TRICK_TEXT_FADE_MS = 5000;
+
+var iPhone = false;
+if(navigator.userAgent.match(/iPhone/i))
+{
+    iPhone = true;
+
+    HAND_DISTANCE = 33;
+    PILE_DISTANCE = 42;
+    PREV_DISTANCE = 7;
+
+    PILE_OFFSET_Y = -120;
+}
+
 
 var waitingOnAnim = false;
 
@@ -660,7 +676,7 @@ function positionCard(prefix, index, viewIndex, flags)
 {
     var id = prefix + String(index);
 
-    var x = viewIndex * 66;
+    var x = viewIndex * HAND_DISTANCE;
     var y = UNSELECTED_Y;
     if(flags & PC_SELECTED)
     {
@@ -670,12 +686,12 @@ function positionCard(prefix, index, viewIndex, flags)
     {
         if(flags & PC_PILE)
         {
-            x = index * 85;
+            x = index * PILE_DISTANCE;
             y = PILE_OFFSET_Y;
         }
         if(flags & PC_PREV)
         {
-            x = (index * 15) + PREV_OFFSET_X;
+            x = (index * PREV_DISTANCE) + PREV_OFFSET_X;
             y = PILE_OFFSET_Y;
         }
     }

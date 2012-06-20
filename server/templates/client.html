@@ -2,7 +2,8 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, target-densitydpi=device-dpi"/>
+<!--<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, target-densitydpi=device-dpi"/>-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, target-densitydpi=device-dpi"/>
 <title>Blackout</title>
 <script src="/jquery.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
@@ -412,6 +413,79 @@ border: 1px solid #fff;
     #bidList {
         top: 250px;
     }
+}
+
+@media all and (max-device-width: 480px)
+{
+    /* iPhone 4 */
+
+    #game {
+        width:  480px;
+        height: 270px;
+    }
+
+    #bidList {
+        left: 140px;
+        top: 130px;
+
+        font-size: 10px;
+    }
+
+
+    #joinGameList {
+        font-size: 10px;
+    }
+
+    #waitGameList {
+        font-size: 10px;
+    }
+
+    #log {
+        font-size: 10px;
+    }
+
+    #scoreboard table th {
+        font-size: 10px;
+    }
+
+    #scoreboard table td {
+        font-size: 10px;
+    }
+
+    #errors {
+        top: 20px;
+        font-size: 14px;
+    }
+
+    #nextButtonBox {
+        bottom: 120px;
+
+        z-index: 4;
+    }
+
+    #cards {
+        position: absolute;
+        left: 0px;
+        top: 200px;
+    }
+
+    .card {
+        position: absolute;
+        width: 79px;
+        height: 123px;
+        background: url('/cards.png');
+        -webkit-transform:scale(0.5,0.5);
+    }
+
+    #playButton {
+        top: 170px;
+        -webkit-transform:scale(0.5,0.5);
+    }
+
+    #yourturn {
+        -webkit-transform:scale(0.5,0.5);
+    }
+}
 
 </style>
 <div id="game">
