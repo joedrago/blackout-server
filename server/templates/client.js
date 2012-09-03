@@ -417,6 +417,7 @@ function onServerUpdate(serverData)
         }
     }
 
+    $('#yourturn').stop();
     $('#yourturn').css('bottom', '-1000px');
     if(yourTurn)
     {
@@ -799,10 +800,13 @@ function onPlayButton()
 
 function onBid(x)
 {
+    if(confirm("Are you sure you want to bid "+x+"?"))
+    {
     sendAction('bid', {
         'id': context.id,
         'bid':x
         });
+    }
 }
 
 function onNextButton()

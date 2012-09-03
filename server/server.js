@@ -384,7 +384,8 @@ function onHttpRequest(req, res)
     args.shift();
 
     if((args[0] == 'client')
-    || (args[0] == 'clientjs'))
+    || (args[0] == 'clientjs')
+    || (args[0] == ''))
     {
         if(args[1])
         {
