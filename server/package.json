@@ -1,0 +1,22 @@
+{
+  "name": "blackout",
+  "description": "blackout",
+  "keywords": [
+    "cards",
+    "game"
+  ],
+  "author": "Joe Drago",
+  "version": "0.0.1",
+  "license": "Boost",
+  "engines": {
+    "node": ">=0.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/joedrago/blackout.git"
+  },
+  "dependencies": {
+    "socket.io": "*",
+    "node-static": "*"
+  }
+}
