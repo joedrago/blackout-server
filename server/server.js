@@ -83,9 +83,9 @@ function sendError(conn, error)
     if(error == blackout.OK)
         return false;
 
-    var data = { error: error };
+    var data = { blackouterror: error };
     console.log("sending error: " + JSON.stringify(data));
-    conn.socket.emit('error', data);
+    conn.socket.emit('blackouterror', data);
     return true;
 }
 

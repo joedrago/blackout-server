@@ -567,9 +567,9 @@ function onServerError(data)
 {
     console.log("onServerError: " + JSON.stringify(data));
 
-    if(data.error)
+    if(data.blackouterror)
     {
-        $('#errors').html(data.error);
+        $('#errors').html(data.blackouterror);
         $('#errors').css('opacity', 1);
         $('#errors').animate(
         {
@@ -926,7 +926,7 @@ function ready()
             socket.emit('hello', { id: context.id });
             });
     socket.on('update', onServerUpdate);
-    socket.on('error', onServerError);
+    socket.on('blackouterror', onServerError);
 }
 
 $(document).ready(function() {
